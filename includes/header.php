@@ -53,7 +53,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </button>
         </div>
 
-        <div class="overflow-auto" style="height: calc(100vh - 65px);">
+        <div class="sidebar-nav">
             <div class="nav-section">Main</div>
             <a href="index.php" class="nav-link <?= $current_page == 'index.php' ? 'active' : '' ?>">
                 <i class="bi bi-speedometer2"></i> Dashboard
@@ -121,12 +121,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <i class="bi bi-gear"></i> Store Settings
             </a>
             <?php endif; ?>
+        </div>
 
-            <div class="p-3">
-                <a href="logout.php" class="btn btn-outline-danger w-100 btn-sm">
-                    <i class="bi bi-box-arrow-right"></i> Logout
-                </a>
-            </div>
+        <div class="sidebar-footer">
+            <a href="logout.php" class="btn btn-outline-danger w-100 btn-sm">
+                <i class="bi bi-box-arrow-right me-1"></i> Logout
+            </a>
         </div>
     </div>
     <!-- /#sidebar-wrapper -->

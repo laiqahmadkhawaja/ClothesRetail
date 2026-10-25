@@ -95,15 +95,20 @@ CREATE TABLE `colors` (
 CREATE TABLE `products` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `product_code` VARCHAR(50) NOT NULL UNIQUE,
+  `barcode` VARCHAR(100) NULL,
   `name` VARCHAR(150) NOT NULL,
   `category_id` INT NULL,
   `brand_id` INT NULL,
   `season` VARCHAR(50) NOT NULL DEFAULT 'All Season',
   `rack_location` VARCHAR(50) NULL,
   `description` TEXT NULL,
+  `cost_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `selling_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `wholesale_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `alert_quantity` INT NOT NULL DEFAULT 5,
   `status` ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_products_barcode` (`barcode`),
   FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON DELETE SET NULL,
   FOREIGN KEY (`brand_id`) REFERENCES `brands`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

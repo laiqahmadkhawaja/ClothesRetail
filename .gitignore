@@ -1,0 +1,22 @@
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# IDE & Editor Configurations
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Temporary Test Files & Session Caches
+*.log
+cookie*.txt
+test_*.txt
+*.tmp
+
+# Environment / Local Secrets
+.env
+.env.local

@@ -35,7 +35,7 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
     <div class="col-12 col-lg-7 col-xl-8" id="posProductsColumn">
         <div class="card border-0 shadow-sm rounded-3 p-2 p-md-3 mb-3">
             <div class="row g-2 align-items-center">
-                <!-- Barcode & Product Search Input -->
+                <!-- Barcode & Product Search Input with Camera Scanner Button -->
                 <div class="col-12 col-md-8">
                     <div class="input-group">
                         <span class="input-group-text bg-white border-end-0 text-primary">
@@ -43,8 +43,12 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
                         </span>
                         <input type="text" id="posSearchInput" class="form-control border-start-0 ps-0 form-control-lg" 
                                placeholder="Scan Barcode (Enter) or Search Garment, Code, Brand... [F2]" autofocus autocomplete="off">
-                        <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn">
+                        <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" title="Clear Search">
                             <i class="bi bi-x-lg"></i>
+                        </button>
+                        <button class="btn btn-primary px-3 d-flex align-items-center gap-1 shadow-sm" type="button" id="openScannerBtn" title="Scan Barcode via Camera [F3]">
+                            <i class="bi bi-camera-fill fs-5"></i>
+                            <span class="d-none d-sm-inline fw-semibold">Scan</span>
                         </button>
                     </div>
                 </div>
@@ -380,6 +384,103 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
     </div>
 </div>
 
+<!-- ======================================================== -->
+<!-- MODAL: Live Camera Barcode Scanner (Auto-Zoom & Alignment) -->
+<!-- ======================================================== -->
+<div class="modal fade" id="barcodeScannerModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white py-2 px-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-camera-video text-warning fs-5"></i>
+                    <h6 class="modal-title fw-bold mb-0">Camera Barcode Scanner</h6>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" id="closeScannerModalBtn" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3 bg-light">
+                <!-- Video Viewport & Scanning Overlay -->
+                <div class="scanner-viewport-wrapper shadow-sm mb-3 position-relative">
+                    <video id="scannerVideo" autoplay playsinline muted></video>
+                    <canvas id="scannerCanvas" style="display: none;"></canvas>
+
+                    <!-- Realtime Status & Zoom Badges -->
+                    <span class="badge bg-dark bg-opacity-75 text-white scanner-floating-badge" id="scannerStatusBadge">
+                        <i class="bi bi-record-circle text-danger me-1"></i> Initializing camera...
+                    </span>
+                    <span class="badge bg-primary scanner-zoom-badge" id="scannerZoomBadge">
+                        1.0x Zoom
+                    </span>
+
+                    <!-- Reticle Frame & Laser Alignment -->
+                    <div class="scanner-reticle" id="scannerReticle">
+                        <div class="scanner-corner corner-tl"></div>
+                        <div class="scanner-corner corner-tr"></div>
+                        <div class="scanner-laser" id="scannerLaser"></div>
+                        <div class="scanner-corner corner-bl"></div>
+                        <div class="scanner-corner corner-br"></div>
+                    </div>
+                </div>
+
+                <!-- Last Scanned Product Confirmation Pill -->
+                <div id="lastScannedBanner" class="alert alert-success d-none py-2 px-3 small mb-2 d-flex justify-content-between align-items-center">
+                    <div class="text-truncate me-2">
+                        <i class="bi bi-check-circle-fill me-1 text-success"></i> 
+                        <strong id="lastScannedName">Garment</strong>
+                        <span class="text-muted ms-1" id="lastScannedVariant"></span>
+                    </div>
+                    <strong class="text-success text-nowrap" id="lastScannedPrice">Rs. 0</strong>
+                </div>
+
+                <!-- Camera Controls & Auto-zoom bar -->
+                <div class="card border p-2 mb-2 bg-white">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="autoZoomSwitch" checked>
+                            <label class="form-check-label small fw-semibold" for="autoZoomSwitch">
+                                <i class="bi bi-magic text-primary"></i> Auto-Zoom & Align
+                            </label>
+                        </div>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="continuousScanSwitch">
+                            <label class="form-check-label small fw-semibold" for="continuousScanSwitch">
+                                Continuous Scan
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Zoom Presets & Slider -->
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="small text-muted fw-bold" style="font-size: 0.75rem;">ZOOM:</span>
+                        <div class="btn-group btn-group-sm flex-grow-1" role="group">
+                            <button type="button" class="btn btn-outline-secondary zoom-btn active" data-zoom="1.0">1.0x</button>
+                            <button type="button" class="btn btn-outline-secondary zoom-btn" data-zoom="1.5">1.5x</button>
+                            <button type="button" class="btn btn-outline-secondary zoom-btn" data-zoom="2.0">2.0x</button>
+                            <button type="button" class="btn btn-outline-secondary zoom-btn" data-zoom="3.0">3.0x</button>
+                        </div>
+                        <input type="range" class="form-range d-none d-sm-block" id="zoomRangeSlider" min="1.0" max="4.0" step="0.1" value="1.0" style="width: 100px;">
+                    </div>
+                </div>
+
+                <!-- Auxiliary Controls: Torch / Switch Camera -->
+                <div class="d-flex justify-content-between align-items-center">
+                    <button type="button" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" id="torchToggleBtn" style="display: none;">
+                        <i class="bi bi-lightbulb"></i> <span id="torchLabel">Torch On</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 ms-auto" id="switchCameraBtn">
+                        <i class="bi bi-arrow-repeat"></i> Switch Camera
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer py-2 px-3 bg-white">
+                <span class="small text-muted me-auto"><i class="bi bi-info-circle me-1"></i> Hold clothing tag inside the neon frame</span>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Include ZXing for 100% offline-ready barcode scanning fallback -->
+<script src="assets/js/zxing.min.js"></script>
 <!-- Include POS JavaScript Engine -->
 <script src="assets/js/pos-engine.js"></script>
 

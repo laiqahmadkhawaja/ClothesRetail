@@ -92,7 +92,11 @@ foreach ($rawVariants as $v) {
 
 <?php if (!$current_product): ?>
     <div class="alert alert-warning">No products available. Please create a product first in Garments Catalog.</div>
-<?php else: ?>
+<?php else: 
+    $defaultCost = floatval($current_product['cost_price'] ?? 850) ?: 850;
+    $defaultSell = floatval($current_product['selling_price'] ?? 1450) ?: 1450;
+    $defaultWhole = floatval($current_product['wholesale_price'] ?? 1200) ?: 1200;
+?>
 
 <!-- Quick Batch Values Applier -->
 <div class="card border-0 shadow-sm rounded-3 p-3 mb-4 bg-light">
@@ -103,19 +107,19 @@ foreach ($rawVariants as $v) {
         <div class="col-6 col-md-2">
             <div class="input-group input-group-sm">
                 <span class="input-group-text">Cost:</span>
-                <input type="number" id="batchCostPrice" class="form-control" placeholder="Purchase Price" value="850">
+                <input type="number" id="batchCostPrice" class="form-control" placeholder="Purchase Price" value="<?= $defaultCost ?>">
             </div>
         </div>
         <div class="col-6 col-md-2">
             <div class="input-group input-group-sm">
                 <span class="input-group-text">Sell:</span>
-                <input type="number" id="batchSellingPrice" class="form-control" placeholder="Retail Price" value="1450">
+                <input type="number" id="batchSellingPrice" class="form-control" placeholder="Retail Price" value="<?= $defaultSell ?>">
             </div>
         </div>
         <div class="col-6 col-md-2">
             <div class="input-group input-group-sm">
                 <span class="input-group-text">Wholesale:</span>
-                <input type="number" id="batchWholesalePrice" class="form-control" placeholder="Wholesale" value="1200">
+                <input type="number" id="batchWholesalePrice" class="form-control" placeholder="Wholesale" value="<?= $defaultWhole ?>">
             </div>
         </div>
         <div class="col-6 col-md-3">
@@ -167,9 +171,9 @@ foreach ($rawVariants as $v) {
                         <?php foreach ($colors as $c): 
                             $v = $matrix[$s['id']][$c['id']] ?? null;
                             $stock = $v ? $v['stock_quantity'] : 0;
-                            $cost = $v ? $v['purchase_price'] : 850;
-                            $sell = $v ? $v['selling_price'] : 1450;
-                            $wholesale = $v ? $v['wholesale_price'] : 1200;
+                            $cost = $v ? $v['purchase_price'] : $defaultCost;
+                            $sell = $v ? $v['selling_price'] : $defaultSell;
+                            $wholesale = $v ? $v['wholesale_price'] : $defaultWhole;
                             $sku = $v ? $v['sku'] : '';
                             $barcode = $v ? $v['barcode'] : '';
                             $hasVariant = ($v !== null);

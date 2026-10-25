@@ -37,6 +37,7 @@ if (empty($query) && $category_id <= 0) {
 
 // 1. Check for Exact Barcode / SKU match first (Immediate POS Scanner Trigger)
 if (!empty($query)) {
+    // A. Check variant barcode & SKU
     $stmt = $pdo->prepare("SELECT pv.*, p.name AS product_name, p.product_code,
                                   s.name AS size_name, c.name AS color_name, c.hex_code AS color_hex
                            FROM product_variants pv
@@ -55,6 +56,52 @@ if (!empty($query)) {
         ]);
         exit;
     }
+
+    // B. Check master product barcode or product_code
+    $stmtP = $pdo->prepare("SELECT id FROM products WHERE (barcode = ? OR product_code = ?) AND status = 'active' LIMIT 1");
+    $stmtP->execute([$query, $query]);
+    $masterProd = $stmtP->fetch();
+
+    if ($masterProd) {
+        $stmtVars = $pdo->prepare("SELECT pv.*, p.name AS product_name, p.product_code,
+                                          s.name AS size_name, c.name AS color_name, c.hex_code AS color_hex
+                                   FROM product_variants pv
+                                   JOIN products p ON pv.product_id = p.id
+                                   JOIN sizes s ON pv.size_id = s.id
+                                   JOIN colors c ON pv.color_id = c.id
+                                   WHERE pv.product_id = ? AND pv.status = 'active'
+                                   ORDER BY pv.stock_quantity DESC");
+        $stmtVars->execute([$masterProd['id']]);
+        $prodVariants = $stmtVars->fetchAll();
+
+        if (count($prodVariants) === 1) {
+            echo json_encode([
+                'exact_match' => true,
+                'variant'     => $prodVariants[0]
+            ]);
+            exit;
+        } elseif (count($prodVariants) > 1) {
+            $stmtProdDetail = $pdo->prepare("SELECT p.id, p.product_code, p.name, p.rack_location, p.season,
+                                                    c.name AS category_name, b.name AS brand_name,
+                                                    COUNT(pv.id) AS total_variants,
+                                                    COALESCE(SUM(pv.stock_quantity), 0) AS total_stock,
+                                                    MIN(pv.selling_price) AS min_price,
+                                                    MAX(pv.selling_price) AS max_price
+                                             FROM products p
+                                             LEFT JOIN categories c ON p.category_id = c.id
+                                             LEFT JOIN brands b ON p.brand_id = b.id
+                                             LEFT JOIN product_variants pv ON p.id = pv.product_id AND pv.status = 'active'
+                                             WHERE p.id = ?
+                                             GROUP BY p.id");
+            $stmtProdDetail->execute([$masterProd['id']]);
+            $pObj = $stmtProdDetail->fetch();
+            echo json_encode([
+                'exact_match' => false,
+                'products'    => [$pObj]
+            ]);
+            exit;
+        }
+    }
 }
 
 // 2. Otherwise search by text (name, code, brand, category, size, color)
@@ -62,9 +109,9 @@ $params = [];
 $where = ["p.status = 'active'"];
 
 if (!empty($query)) {
-    $where[] = "(p.name LIKE ? OR p.product_code LIKE ? OR b.name LIKE ? OR c.name LIKE ? OR pv.sku LIKE ? OR pv.barcode LIKE ?)";
+    $where[] = "(p.name LIKE ? OR p.product_code LIKE ? OR p.barcode LIKE ? OR b.name LIKE ? OR c.name LIKE ? OR pv.sku LIKE ? OR pv.barcode LIKE ?)";
     $like = "%$query%";
-    $params = array_merge($params, [$like, $like, $like, $like, $like, $like]);
+    $params = array_merge($params, [$like, $like, $like, $like, $like, $like, $like]);
 }
 
 if ($category_id > 0) {

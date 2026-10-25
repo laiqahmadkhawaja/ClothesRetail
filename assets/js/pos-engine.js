@@ -135,12 +135,21 @@ document.addEventListener("DOMContentLoaded", function() {
         saveQuickCustomer();
     });
 
-    // 11. Global Keyboard Shortcuts: F2 (search), F4 (hold), F8 (pay)
+    // 11. Open Camera Barcode Scanner Button
+    const openScannerBtn = document.getElementById("openScannerBtn");
+    if (openScannerBtn) {
+        openScannerBtn.addEventListener("click", openBarcodeScanner);
+    }
+
+    // 12. Global Keyboard Shortcuts: F2 (search), F3 (camera scanner), F4 (hold), F8 (pay)
     document.addEventListener("keydown", function(e) {
         if (e.key === "F2") {
             e.preventDefault();
             searchInput.focus();
             searchInput.select();
+        } else if (e.key === "F3") {
+            e.preventDefault();
+            openBarcodeScanner();
         } else if (e.key === "F4") {
             e.preventDefault();
             holdCurrentSale();
@@ -149,6 +158,9 @@ document.addEventListener("DOMContentLoaded", function() {
             openCheckoutModal();
         }
     });
+
+    // Initialize Camera Scanner Event Bindings
+    initBarcodeScannerListeners();
 
     // Set initial mobile view
     if (window.innerWidth < 992) {
@@ -778,5 +790,467 @@ function saveQuickCustomer() {
             } else {
                 alert("Failed to create customer: " + data.error);
             }
+        });
+}
+
+// ========================================================
+// LIVE CAMERA BARCODE SCANNER (AUTO-ZOOM & ALIGNMENT)
+// ========================================================
+let scannerStream = null;
+let scannerVideo = null;
+let scannerCanvas = null;
+let scannerCtx = null;
+let scannerAnimationId = null;
+let isScanningActive = false;
+let nativeBarcodeDetector = null;
+let zxingReader = null;
+let currentZoom = 1.0;
+let autoZoomEnabled = true;
+let continuousScan = false;
+let facingMode = 'environment';
+let isTorchOn = false;
+let lastDetectedBarcode = '';
+let lastDetectedTime = 0;
+let hardwareZoomSupported = false;
+let minHardwareZoom = 1;
+let maxHardwareZoom = 4;
+let lastScanTimestamp = 0;
+
+function initBarcodeScannerListeners() {
+    const modalEl = document.getElementById("barcodeScannerModal");
+    if (!modalEl) return;
+
+    scannerVideo = document.getElementById("scannerVideo");
+    scannerCanvas = document.getElementById("scannerCanvas");
+    if (scannerCanvas) scannerCtx = scannerCanvas.getContext("2d", { willReadFrequently: true });
+
+    // Initialize native BarcodeDetector if supported
+    if ('BarcodeDetector' in window) {
+        try {
+            nativeBarcodeDetector = new BarcodeDetector({
+                formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'qr_code']
+            });
+        } catch (e) {
+            nativeBarcodeDetector = null;
+        }
+    }
+
+    // Initialize ZXing offline fallback
+    if (window.ZXing && !zxingReader) {
+        try {
+            zxingReader = new ZXing.BrowserMultiFormatReader();
+        } catch (e) {
+            zxingReader = null;
+        }
+    }
+
+    // Modal lifecycle events
+    modalEl.addEventListener("shown.bs.modal", startScannerCamera);
+    modalEl.addEventListener("hidden.bs.modal", stopScannerStream);
+
+    // Zoom Buttons
+    document.querySelectorAll(".zoom-btn").forEach(btn => {
+        btn.addEventListener("click", function() {
+            const z = parseFloat(this.dataset.zoom) || 1.0;
+            setScannerZoom(z);
+        });
+    });
+
+    // Zoom Range Slider
+    const zoomSlider = document.getElementById("zoomRangeSlider");
+    if (zoomSlider) {
+        zoomSlider.addEventListener("input", function() {
+            setScannerZoom(parseFloat(this.value));
+        });
+    }
+
+    // Auto-zoom Toggle Switch
+    const autoZoomSwitch = document.getElementById("autoZoomSwitch");
+    if (autoZoomSwitch) {
+        autoZoomSwitch.addEventListener("change", function() {
+            autoZoomEnabled = this.checked;
+            showToast(autoZoomEnabled ? "Auto-Zoom & Alignment: Enabled" : "Auto-Zoom: Disabled", "secondary");
+        });
+    }
+
+    // Continuous Scan Toggle Switch
+    const contSwitch = document.getElementById("continuousScanSwitch");
+    if (contSwitch) {
+        contSwitch.addEventListener("change", function() {
+            continuousScan = this.checked;
+        });
+    }
+
+    // Torch / Flashlight Toggle
+    const torchBtn = document.getElementById("torchToggleBtn");
+    if (torchBtn) {
+        torchBtn.addEventListener("click", toggleTorch);
+    }
+
+    // Flip Camera (Front / Rear)
+    const switchCamBtn = document.getElementById("switchCameraBtn");
+    if (switchCamBtn) {
+        switchCamBtn.addEventListener("click", switchCamera);
+    }
+}
+
+function openBarcodeScanner() {
+    const modalEl = document.getElementById("barcodeScannerModal");
+    if (!modalEl) return;
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+}
+
+function closeBarcodeScanner() {
+    const modalEl = document.getElementById("barcodeScannerModal");
+    if (!modalEl) return;
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+}
+
+function startScannerCamera() {
+    scannerVideo = document.getElementById("scannerVideo");
+    const statusBadge = document.getElementById("scannerStatusBadge");
+    const reticle = document.getElementById("scannerReticle");
+    if (reticle) reticle.classList.remove("aligned");
+    if (statusBadge) {
+        statusBadge.className = "badge bg-dark bg-opacity-75 text-white scanner-floating-badge";
+        statusBadge.innerHTML = '<i class="bi bi-camera-video me-1"></i> Starting camera...';
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Camera access is not supported by your browser or requires HTTPS / localhost.");
+        closeBarcodeScanner();
+        return;
+    }
+
+    // Request camera feed with preferred environment rear camera
+    const constraints = {
+        video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            focusMode: { ideal: 'continuous' }
+        },
+        audio: false
+    };
+
+    navigator.mediaDevices.getUserMedia(constraints)
+        .then(stream => {
+            scannerStream = stream;
+            scannerVideo.srcObject = stream;
+            scannerVideo.setAttribute("playsinline", "true");
+            scannerVideo.play();
+
+            // Detect hardware capabilities (hardware zoom & torch)
+            const track = stream.getVideoTracks()[0];
+            const caps = (track && track.getCapabilities) ? track.getCapabilities() : {};
+
+            hardwareZoomSupported = !!caps.zoom;
+            if (hardwareZoomSupported) {
+                minHardwareZoom = caps.zoom.min || 1;
+                maxHardwareZoom = caps.zoom.max || 4;
+                const slider = document.getElementById("zoomRangeSlider");
+                if (slider) {
+                    slider.min = minHardwareZoom;
+                    slider.max = maxHardwareZoom;
+                }
+            }
+
+            const torchBtn = document.getElementById("torchToggleBtn");
+            if (torchBtn) {
+                if (caps.torch) {
+                    torchBtn.style.display = "inline-flex";
+                    isTorchOn = false;
+                    document.getElementById("torchLabel").innerText = "Torch On";
+                } else {
+                    torchBtn.style.display = "none";
+                }
+            }
+
+            isScanningActive = true;
+            setScannerZoom(1.0);
+
+            if (statusBadge) {
+                statusBadge.className = "badge bg-primary text-white scanner-floating-badge";
+                statusBadge.innerHTML = '<i class="bi bi-upc-scan me-1"></i> Point at barcode';
+            }
+
+            // Start scan frame loop
+            requestAnimationFrame(scanVideoFrame);
+        })
+        .catch(err => {
+            console.error("Camera access error:", err);
+            alert("Could not access camera: " + (err.message || err.name) + ". Please check camera permissions.");
+            closeBarcodeScanner();
+        });
+}
+
+function stopScannerStream() {
+    isScanningActive = false;
+    if (scannerAnimationId) {
+        cancelAnimationFrame(scannerAnimationId);
+        scannerAnimationId = null;
+    }
+
+    if (scannerStream) {
+        scannerStream.getTracks().forEach(track => {
+            track.stop();
+        });
+        scannerStream = null;
+    }
+
+    if (scannerVideo) {
+        scannerVideo.srcObject = null;
+        scannerVideo.style.transform = "scale(1)";
+    }
+
+    const reticle = document.getElementById("scannerReticle");
+    if (reticle) reticle.classList.remove("aligned");
+
+    const banner = document.getElementById("lastScannedBanner");
+    if (banner) banner.classList.add("d-none");
+}
+
+function setScannerZoom(zoomVal) {
+    currentZoom = Math.max(1.0, Math.min(4.0, Math.round(zoomVal * 10) / 10));
+
+    // Update UI elements
+    const zoomBadge = document.getElementById("scannerZoomBadge");
+    if (zoomBadge) zoomBadge.innerText = `${currentZoom.toFixed(1)}x Zoom`;
+
+    const slider = document.getElementById("zoomRangeSlider");
+    if (slider) slider.value = currentZoom;
+
+    document.querySelectorAll(".zoom-btn").forEach(btn => {
+        const bz = parseFloat(btn.dataset.zoom);
+        if (Math.abs(bz - currentZoom) < 0.25) {
+            btn.classList.add("active");
+            btn.classList.remove("btn-outline-secondary");
+            btn.classList.add("btn-primary");
+        } else {
+            btn.classList.remove("active");
+            btn.classList.add("btn-outline-secondary");
+            btn.classList.remove("btn-primary");
+        }
+    });
+
+    // Apply hardware camera zoom if supported
+    if (hardwareZoomSupported && scannerStream) {
+        const track = scannerStream.getVideoTracks()[0];
+        if (track && track.applyConstraints) {
+            track.applyConstraints({
+                advanced: [{ zoom: Math.min(maxHardwareZoom, Math.max(minHardwareZoom, currentZoom)) }]
+            }).catch(() => {});
+        }
+    }
+
+    // Also apply smooth CSS digital transform zoom
+    if (scannerVideo) {
+        scannerVideo.style.transform = `scale(${currentZoom})`;
+    }
+}
+
+function toggleTorch() {
+    if (!scannerStream) return;
+    const track = scannerStream.getVideoTracks()[0];
+    if (track && track.applyConstraints) {
+        isTorchOn = !isTorchOn;
+        track.applyConstraints({ advanced: [{ torch: isTorchOn }] })
+            .then(() => {
+                const label = document.getElementById("torchLabel");
+                if (label) label.innerText = isTorchOn ? "Torch Off" : "Torch On";
+                const btn = document.getElementById("torchToggleBtn");
+                if (btn) {
+                    if (isTorchOn) {
+                        btn.classList.add("btn-warning", "text-dark");
+                        btn.classList.remove("btn-outline-secondary");
+                    } else {
+                        btn.classList.remove("btn-warning", "text-dark");
+                        btn.classList.add("btn-outline-secondary");
+                    }
+                }
+            })
+            .catch(() => {});
+    }
+}
+
+function switchCamera() {
+    facingMode = (facingMode === 'environment') ? 'user' : 'environment';
+    stopScannerStream();
+    startScannerCamera();
+}
+
+function scanVideoFrame(now) {
+    if (!isScanningActive || !scannerVideo || scannerVideo.readyState !== 4) {
+        if (isScanningActive) {
+            scannerAnimationId = requestAnimationFrame(scanVideoFrame);
+        }
+        return;
+    }
+
+    // Throttle scan rate to ~25 frames/second
+    if (now - lastScanTimestamp < 40) {
+        scannerAnimationId = requestAnimationFrame(scanVideoFrame);
+        return;
+    }
+    lastScanTimestamp = now;
+
+    // Primary: Native BarcodeDetector
+    if (nativeBarcodeDetector) {
+        nativeBarcodeDetector.detect(scannerVideo)
+            .then(barcodes => {
+                if (!isScanningActive) return;
+                if (barcodes && barcodes.length > 0) {
+                    const b = barcodes[0];
+                    handleBarcodeMatch(b.rawValue, b.boundingBox);
+                } else {
+                    handleUnmatchedFrame();
+                }
+            })
+            .catch(() => {
+                fallbackZXingScan();
+            })
+            .finally(() => {
+                if (isScanningActive) {
+                    scannerAnimationId = requestAnimationFrame(scanVideoFrame);
+                }
+            });
+    } else {
+        // Fallback: ZXing scan
+        fallbackZXingScan();
+        if (isScanningActive) {
+            scannerAnimationId = requestAnimationFrame(scanVideoFrame);
+        }
+    }
+}
+
+function fallbackZXingScan() {
+    if (!zxingReader || !scannerCanvas || !scannerCtx || !scannerVideo) return;
+    try {
+        scannerCanvas.width = scannerVideo.videoWidth || 640;
+        scannerCanvas.height = scannerVideo.videoHeight || 480;
+        scannerCtx.drawImage(scannerVideo, 0, 0, scannerCanvas.width, scannerCanvas.height);
+
+        zxingReader.decodeFromCanvas(scannerCanvas)
+            .then(result => {
+                if (result && result.getText()) {
+                    handleBarcodeMatch(result.getText(), null);
+                }
+            })
+            .catch(() => {
+                handleUnmatchedFrame();
+            });
+    } catch (e) {}
+}
+
+function handleUnmatchedFrame() {
+    const reticle = document.getElementById("scannerReticle");
+    if (reticle && reticle.classList.contains("aligned")) {
+        // Return to normal searching laser state smoothly
+        reticle.classList.remove("aligned");
+        const statusBadge = document.getElementById("scannerStatusBadge");
+        if (statusBadge && statusBadge.innerText.indexOf("Captured") === -1) {
+            statusBadge.className = "badge bg-primary text-white scanner-floating-badge";
+            statusBadge.innerHTML = '<i class="bi bi-upc-scan me-1"></i> Scanning...';
+        }
+    }
+}
+
+function handleBarcodeMatch(barcodeText, boundingBox) {
+    if (!barcodeText) return;
+    const code = barcodeText.trim();
+    if (!code) return;
+
+    const reticle = document.getElementById("scannerReticle");
+    if (reticle) reticle.classList.add("aligned");
+
+    // Smart Auto-Zoom & Auto-Alignment Adjustment
+    if (autoZoomEnabled && boundingBox && scannerVideo) {
+        const vidWidth = scannerVideo.videoWidth || 1280;
+        const boxWidth = boundingBox.width;
+        const targetWidth = vidWidth * 0.45; // reticle target area width approx
+
+        if (boxWidth > 0 && targetWidth > 0) {
+            const ratio = boxWidth / targetWidth;
+            // If barcode is too small / far away, zoom in to bring into sharp focus
+            if (ratio < 0.38 && currentZoom < 3.2) {
+                setScannerZoom(currentZoom + 0.3);
+            } 
+            // If barcode is too large / overflowing frame, zoom out
+            else if (ratio > 0.88 && currentZoom > 1.2) {
+                setScannerZoom(currentZoom - 0.3);
+            }
+        }
+    }
+
+    // Debounce to prevent reading the exact same barcode multiple times within 1.5s
+    const now = Date.now();
+    if (code === lastDetectedBarcode && (now - lastDetectedTime < 1500)) {
+        return;
+    }
+
+    lastDetectedBarcode = code;
+    lastDetectedTime = now;
+
+    // Visual & Haptic & Audio Feedback
+    playBeep(980, 0.12);
+    if (navigator.vibrate) {
+        try { navigator.vibrate([40, 30, 40]); } catch (e) {}
+    }
+
+    const statusBadge = document.getElementById("scannerStatusBadge");
+    if (statusBadge) {
+        statusBadge.className = "badge bg-success text-white scanner-floating-badge";
+        statusBadge.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> Scanned: ${code}`;
+    }
+
+    // Process Barcode into Cart
+    processCameraScannedBarcode(code);
+}
+
+function processCameraScannedBarcode(code) {
+    fetch(`ajax/pos_search.php?q=${encodeURIComponent(code)}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.exact_match && data.variant) {
+                const v = data.variant;
+                addVariantToCart(v, 1);
+
+                // Show confirmation pill in scanner
+                const banner = document.getElementById("lastScannedBanner");
+                const nameEl = document.getElementById("lastScannedName");
+                const varEl = document.getElementById("lastScannedVariant");
+                const priceEl = document.getElementById("lastScannedPrice");
+
+                if (banner && nameEl) {
+                    nameEl.innerText = v.product_name;
+                    if (varEl) varEl.innerText = `(${v.size_name || ''} / ${v.color_name || ''})`;
+                    if (priceEl) priceEl.innerText = `Rs. ${parseFloat(v.selling_price).toLocaleString()}`;
+                    banner.classList.remove("d-none");
+                }
+
+                showToast(`Added: ${v.product_name} (${v.size_name}/${v.color_name})`, "success");
+
+                // Auto-close if continuous scan is disabled
+                if (!continuousScan) {
+                    setTimeout(() => {
+                        closeBarcodeScanner();
+                        // Focus on search input for next manual or hardware scan
+                        const searchInput = document.getElementById("posSearchInput");
+                        if (searchInput) searchInput.focus();
+                    }, 450);
+                }
+            } else if (data.products && data.products.length === 1) {
+                // If barcode matched product with multiple variants, open variant chooser
+                closeBarcodeScanner();
+                selectProductForVariants(data.products[0].id);
+            } else {
+                showToast(`Barcode "${code}" not found in garment catalog.`, "warning");
+            }
+        })
+        .catch(err => {
+            console.error("Barcode lookup error:", err);
+            showToast("Lookup failed: " + err, "danger");
         });
 }
