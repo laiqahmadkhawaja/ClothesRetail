@@ -1,0 +1,782 @@
+// assets/js/pos-engine.js - Full Clothing POS & Cart Engine with Mobile Support
+let cart = [];
+let currentCategory = 0;
+let taxPercent = 0; // configured from php
+
+// Audio feedback for barcode scans
+const audioCtx = (window.AudioContext || window.webkitAudioContext) ? new (window.AudioContext || window.webkitAudioContext)() : null;
+function playBeep(freq = 880, duration = 0.08) {
+    if (!audioCtx) return;
+    try {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.value = freq;
+        gain.gain.value = 0.15;
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    } catch (e) {}
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    loadProducts();
+    updateHeldCount();
+
+    // 1. Search Barcode & Products
+    const searchInput = document.getElementById("posSearchInput");
+    let searchTimeout = null;
+
+    searchInput.addEventListener("input", function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            const q = searchInput.value.trim();
+            if (q.length >= 2 || q.length === 0) {
+                loadProducts(q, currentCategory);
+            }
+        }, 300);
+    });
+
+    searchInput.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            const q = searchInput.value.trim();
+            if (q) {
+                handleBarcodeEnter(q);
+            }
+        }
+    });
+
+    document.getElementById("clearSearchBtn").addEventListener("click", function() {
+        searchInput.value = "";
+        loadProducts("", currentCategory);
+        searchInput.focus();
+    });
+
+    // 2. Category Filter Buttons
+    document.querySelectorAll(".category-filter-btn").forEach(btn => {
+        btn.addEventListener("click", function() {
+            document.querySelectorAll(".category-filter-btn").forEach(b => {
+                b.classList.remove("btn-primary", "active");
+                b.classList.add("btn-outline-secondary");
+            });
+            this.classList.remove("btn-outline-secondary");
+            this.classList.add("btn-primary", "active");
+
+            currentCategory = parseInt(this.dataset.id) || 0;
+            loadProducts(searchInput.value.trim(), currentCategory);
+        });
+    });
+
+    // 3. Cart Discount Input
+    document.getElementById("cartBillDiscount").addEventListener("input", calculateTotals);
+
+    // 4. Clear Cart
+    document.getElementById("clearCartBtn").addEventListener("click", function() {
+        if (cart.length > 0 && confirm("Are you sure you want to clear the entire cart?")) {
+            cart = [];
+            renderCart();
+            showToast("Cart cleared", "secondary");
+        }
+    });
+
+    // 5. Open Pay Modal
+    document.getElementById("openPayModalBtn").addEventListener("click", openCheckoutModal);
+
+    // 6. Payment Method Change
+    document.getElementById("checkoutMethodSelect").addEventListener("change", function() {
+        const method = this.value;
+        const splitSec = document.getElementById("splitPaymentSection");
+        const singleSec = document.getElementById("singleCashSection");
+
+        if (method === "split") {
+            splitSec.classList.remove("d-none");
+            singleSec.classList.add("d-none");
+        } else {
+            splitSec.classList.add("d-none");
+            singleSec.classList.remove("d-none");
+        }
+        recalcPaymentDifference();
+    });
+
+    // 7. Cash Received Inputs
+    document.getElementById("cashReceivedInput").addEventListener("input", recalcPaymentDifference);
+    ['splitCash', 'splitJazzCash', 'splitDigital', 'splitCard'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener("input", recalcPaymentDifference);
+    });
+
+    // Quick cash buttons
+    document.querySelectorAll(".quick-cash-btn").forEach(btn => {
+        btn.addEventListener("click", function() {
+            const val = this.dataset.val;
+            const net = getCartNetTotal();
+            const input = document.getElementById("cashReceivedInput");
+            if (val === "exact") {
+                input.value = net;
+            } else {
+                input.value = parseFloat(val);
+            }
+            recalcPaymentDifference();
+        });
+    });
+
+    // 8. Confirm Checkout
+    document.getElementById("confirmCheckoutThermalBtn").addEventListener("click", () => submitCheckout('thermal'));
+    document.getElementById("confirmCheckoutA4Btn").addEventListener("click", () => submitCheckout('a4'));
+
+    // 9. Hold Sale
+    document.getElementById("holdSaleBtn").addEventListener("click", holdCurrentSale);
+
+    // 10. Quick Add Customer Form
+    document.getElementById("quickCustomerForm").addEventListener("submit", function(e) {
+        e.preventDefault();
+        saveQuickCustomer();
+    });
+
+    // 11. Global Keyboard Shortcuts: F2 (search), F4 (hold), F8 (pay)
+    document.addEventListener("keydown", function(e) {
+        if (e.key === "F2") {
+            e.preventDefault();
+            searchInput.focus();
+            searchInput.select();
+        } else if (e.key === "F4") {
+            e.preventDefault();
+            holdCurrentSale();
+        } else if (e.key === "F8") {
+            e.preventDefault();
+            openCheckoutModal();
+        }
+    });
+
+    // Set initial mobile view
+    if (window.innerWidth < 992) {
+        switchMobileView('products');
+    }
+});
+
+// Mobile View Switcher (Garments Catalogue vs Cart & Bill)
+function switchMobileView(view) {
+    if (window.innerWidth >= 992) return; // desktop layout shows both side-by-side
+
+    const prodCol = document.getElementById("posProductsColumn");
+    const cartCol = document.getElementById("posCartColumn");
+    const tabProd = document.getElementById("tabMobileProducts");
+    const tabCart = document.getElementById("tabMobileCart");
+
+    if (view === 'products') {
+        prodCol.classList.remove("d-none");
+        cartCol.classList.add("d-none");
+        tabProd.classList.add("active");
+        tabCart.classList.remove("active");
+    } else {
+        prodCol.classList.add("d-none");
+        cartCol.classList.remove("d-none");
+        tabProd.classList.remove("active");
+        tabCart.classList.add("active");
+    }
+}
+
+// Load products catalogue into grid
+function loadProducts(query = '', category_id = 0) {
+    const container = document.getElementById("posProductsContainer");
+    const loader = document.getElementById("productGridLoading");
+    loader.classList.remove("d-none");
+
+    fetch(`ajax/pos_search.php?q=${encodeURIComponent(query)}&category_id=${category_id}`)
+        .then(res => res.json())
+        .then(data => {
+            loader.classList.add("d-none");
+            container.innerHTML = "";
+
+            if (!data.products || data.products.length === 0) {
+                container.innerHTML = `
+                    <div class="col-12 text-center py-5 text-muted">
+                        <i class="bi bi-search display-6 text-secondary mb-2 d-block"></i>
+                        No garments match "${query}".<br>
+                        <small>Try a different keyword or category.</small>
+                    </div>`;
+                return;
+            }
+
+            data.products.forEach(p => {
+                const totalStock = parseInt(p.total_stock) || 0;
+                const minPrice = parseFloat(p.min_price) || 0;
+                const maxPrice = parseFloat(p.max_price) || 0;
+                const priceLabel = (minPrice === maxPrice) ? `Rs. ${minPrice.toLocaleString()}` : `Rs. ${minPrice.toLocaleString()} - ${maxPrice.toLocaleString()}`;
+
+                const isOutOfStock = totalStock <= 0;
+
+                const col = document.createElement("div");
+                col.className = "col-6 col-sm-4 col-md-3 col-xl-2";
+                col.innerHTML = `
+                    <div class="pos-product-card p-2 ${isOutOfStock ? 'out-of-stock' : ''}" onclick="selectProductForVariants(${p.id})">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="badge bg-light text-dark border" style="font-size: 0.65rem;">${p.product_code}</span>
+                                <span class="badge ${totalStock > 5 ? 'bg-success-subtle text-success' : (totalStock > 0 ? 'bg-warning-subtle text-warning' : 'bg-danger-subtle text-danger')}" style="font-size: 0.65rem;">
+                                    ${totalStock} in stock
+                                </span>
+                            </div>
+                            <div class="fw-bold text-dark small text-truncate" title="${p.name}">${p.name}</div>
+                            <div class="text-muted" style="font-size: 0.7rem;">${p.category_name || ''} &bull; ${p.brand_name || ''}</div>
+                        </div>
+                        <div class="mt-2 pt-1 border-top d-flex justify-content-between align-items-center">
+                            <strong class="text-primary small">${priceLabel}</strong>
+                            <i class="bi bi-grid-3x3-gap-fill text-muted small"></i>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(col);
+            });
+        })
+        .catch(err => {
+            loader.classList.add("d-none");
+            console.error("Error loading POS products:", err);
+        });
+}
+
+// Handle Barcode Direct Scan
+function handleBarcodeEnter(query) {
+    fetch(`ajax/pos_search.php?q=${encodeURIComponent(query)}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.exact_match && data.variant) {
+                playBeep(980, 0.1);
+                addVariantToCart(data.variant, 1);
+                document.getElementById("posSearchInput").value = "";
+                showToast(`Added: ${data.variant.product_name} (${data.variant.size_name}/${data.variant.color_name})`, "success");
+            } else if (data.products && data.products.length === 1) {
+                selectProductForVariants(data.products[0].id);
+            } else {
+                showToast("Barcode not found or multiple items matched.", "warning");
+            }
+        })
+        .catch(err => console.error(err));
+}
+
+// Select Product and Open Size & Color Variant Modal
+function selectProductForVariants(productId) {
+    fetch(`ajax/get_product_variants.php?product_id=${productId}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+
+            const p = data.product;
+            document.getElementById("variantModalTitle").innerHTML = `
+                <i class="bi bi-tag-fill me-2"></i> ${p.name}
+                <span class="badge bg-white text-dark ms-2 fw-normal small">${p.product_code}</span>
+            `;
+
+            const container = document.getElementById("variantGridContainer");
+            container.innerHTML = "";
+
+            if (!data.variants || data.variants.length === 0) {
+                container.innerHTML = '<div class="col-12 text-center text-muted py-3">No variants configured for this product. Use Size & Color Matrix to configure variants.</div>';
+            } else {
+                data.variants.forEach(v => {
+                    const stock = parseInt(v.stock_quantity) || 0;
+                    const isOut = stock <= 0;
+
+                    const col = document.createElement("div");
+                    col.className = "col-12 col-sm-6 col-md-4";
+                    col.innerHTML = `
+                        <div class="card p-2 border ${isOut ? 'bg-light text-muted opacity-50' : 'border-primary-subtle shadow-sm'} h-100" style="cursor: ${isOut ? 'not-allowed' : 'pointer'}; touch-action: manipulation;" onclick='${isOut ? '' : `chooseVariant(${JSON.stringify(v)})`}'>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <div>
+                                    <span class="size-badge me-1">Size ${v.size_name}</span>
+                                    <span class="color-dot" style="background-color: ${v.color_hex};"></span>
+                                    <span class="small fw-semibold">${v.color_name}</span>
+                                </div>
+                                <span class="badge ${stock > 3 ? 'bg-success' : (stock > 0 ? 'bg-warning text-dark' : 'bg-danger')}">
+                                    ${stock} left
+                                </span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top">
+                                <span class="small text-muted">SKU: ${v.sku}</span>
+                                <strong class="text-primary">Rs. ${parseFloat(v.selling_price).toLocaleString()}</strong>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(col);
+                });
+            }
+
+            const modal = new bootstrap.Modal(document.getElementById("variantSelectModal"));
+            modal.show();
+        })
+        .catch(err => console.error(err));
+}
+
+// When a variant is picked in the modal
+function chooseVariant(variant) {
+    bootstrap.Modal.getInstance(document.getElementById("variantSelectModal")).hide();
+    playBeep(920, 0.08);
+    addVariantToCart(variant, 1);
+    showToast(`Added: ${variant.size_name} / ${variant.color_name}`, "success");
+}
+
+// Add Variant to Cart
+function addVariantToCart(variant, qty = 1) {
+    const existing = cart.find(item => item.variant_id === variant.id);
+    const availableStock = parseInt(variant.stock_quantity) || 0;
+
+    if (existing) {
+        if (existing.qty + qty > availableStock) {
+            alert(`Cannot add more. Only ${availableStock} units available in stock for this variant.`);
+            return;
+        }
+        existing.qty += qty;
+        existing.total_price = (existing.qty * existing.unit_price) - existing.discount;
+    } else {
+        if (qty > availableStock) {
+            alert(`Cannot add. Only ${availableStock} units available in stock.`);
+            return;
+        }
+        cart.push({
+            variant_id: variant.id,
+            product_id: variant.product_id,
+            product_name: variant.product_name,
+            size_name: variant.size_name,
+            color_name: variant.color_name,
+            color_hex: variant.color_hex,
+            sku: variant.sku,
+            barcode: variant.barcode,
+            unit_price: parseFloat(variant.selling_price),
+            cost_price: parseFloat(variant.purchase_price),
+            qty: qty,
+            discount: 0,
+            max_stock: availableStock,
+            total_price: parseFloat(variant.selling_price) * qty
+        });
+    }
+
+    renderCart();
+}
+
+// Render Cart Table
+function renderCart() {
+    const tbody = document.getElementById("cartTableBody");
+    tbody.innerHTML = "";
+
+    if (cart.length === 0) {
+        tbody.innerHTML = `
+            <tr id="emptyCartRow">
+                <td colspan="5" class="text-center py-5 text-muted">
+                    <i class="bi bi-cart3 display-6 d-block text-secondary mb-2"></i>
+                    Cart is empty<br>
+                    <small>Scan barcode or tap a garment card</small>
+                </td>
+            </tr>`;
+        calculateTotals();
+        return;
+    }
+
+    cart.forEach((item, index) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>
+                <div class="fw-semibold text-dark text-truncate" style="max-width: 130px;">${item.product_name}</div>
+                <div class="d-flex align-items-center gap-1 mt-1">
+                    <span class="size-badge">${item.size_name}</span>
+                    <span class="color-dot" style="background-color: ${item.color_hex};"></span>
+                    <small class="text-muted" style="font-size: 0.68rem;">${item.color_name}</small>
+                </div>
+            </td>
+            <td class="text-center">
+                <div class="input-group input-group-sm justify-content-center" style="width: 95px;">
+                    <button class="btn btn-outline-secondary touch-btn px-2 py-0" onclick="changeQty(${index}, -1)">-</button>
+                    <input type="text" class="form-control form-control-sm text-center px-0 py-0 fw-bold" value="${item.qty}" readonly style="width: 28px;">
+                    <button class="btn btn-outline-secondary touch-btn px-2 py-0" onclick="changeQty(${index}, 1)">+</button>
+                </div>
+            </td>
+            <td class="text-end">
+                <input type="number" class="form-control form-control-sm text-end px-1 py-0" value="${item.unit_price}" onchange="changePrice(${index}, this.value)" style="width: 70px; display: inline-block;">
+            </td>
+            <td class="text-end fw-bold text-dark">
+                Rs. ${item.total_price.toLocaleString()}
+            </td>
+            <td class="text-center">
+                <button class="btn btn-link text-danger p-0" onclick="removeCartItem(${index})" title="Remove">
+                    <i class="bi bi-x-circle fs-6"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    calculateTotals();
+}
+
+function changeQty(index, delta) {
+    const item = cart[index];
+    const newQty = item.qty + delta;
+    if (newQty <= 0) {
+        removeCartItem(index);
+        return;
+    }
+    if (newQty > item.max_stock) {
+        alert(`Maximum available stock is ${item.max_stock}.`);
+        return;
+    }
+    item.qty = newQty;
+    item.total_price = (item.qty * item.unit_price) - item.discount;
+    renderCart();
+}
+
+function changePrice(index, newPrice) {
+    const p = parseFloat(newPrice) || 0;
+    cart[index].unit_price = p;
+    cart[index].total_price = (cart[index].qty * p) - cart[index].discount;
+    renderCart();
+}
+
+function removeCartItem(index) {
+    cart.splice(index, 1);
+    renderCart();
+}
+
+// Calculate Totals and Update Mobile Badges
+function calculateTotals() {
+    let subtotal = 0;
+    let totalItems = 0;
+    cart.forEach(item => {
+        subtotal += item.total_price;
+        totalItems += item.qty;
+    });
+
+    const discount = parseFloat(document.getElementById("cartBillDiscount").value) || 0;
+    let net = subtotal - discount;
+    if (net < 0) net = 0;
+
+    document.getElementById("cartSubtotal").innerText = `Rs. ${subtotal.toLocaleString()}`;
+    document.getElementById("cartNetTotal").innerText = `Rs. ${net.toLocaleString()}`;
+
+    // Update Mobile Nav Badges & Sticky Bar
+    const mobBadge = document.getElementById("mobileCartBadge");
+    const mobTotalBadge = document.getElementById("mobileCartTotalBadge");
+    const stickyBar = document.getElementById("mobileCartStickyBar");
+    const stickyCount = document.getElementById("stickyItemCount");
+    const stickyTotal = document.getElementById("stickyTotalVal");
+
+    if (mobBadge) mobBadge.innerText = totalItems;
+    if (mobTotalBadge) mobTotalBadge.innerText = `Rs. ${net.toLocaleString()}`;
+
+    if (stickyBar) {
+        if (totalItems > 0 && window.innerWidth < 992) {
+            stickyBar.classList.remove("d-none");
+            if (stickyCount) stickyCount.innerText = totalItems;
+            if (stickyTotal) stickyTotal.innerText = `Rs. ${net.toLocaleString()}`;
+        } else {
+            stickyBar.classList.add("d-none");
+        }
+    }
+}
+
+function getCartNetTotal() {
+    let subtotal = 0;
+    cart.forEach(item => subtotal += item.total_price);
+    const discount = parseFloat(document.getElementById("cartBillDiscount").value) || 0;
+    let net = subtotal - discount;
+    return net < 0 ? 0 : net;
+}
+
+// Open Checkout Modal
+function openCheckoutModal() {
+    if (cart.length === 0) {
+        showToast("Cart is empty! Add products before checkout.", "warning");
+        return;
+    }
+
+    const net = getCartNetTotal();
+    document.getElementById("modalNetPayable").innerText = `Rs. ${net.toLocaleString()}`;
+    document.getElementById("cashReceivedInput").value = net; // default exact cash
+    recalcPaymentDifference();
+
+    const modal = new bootstrap.Modal(document.getElementById("checkoutModal"));
+    modal.show();
+}
+
+// Recalculate Cash / Change / Due
+function recalcPaymentDifference() {
+    const net = getCartNetTotal();
+    const method = document.getElementById("checkoutMethodSelect").value;
+    let totalPaid = 0;
+
+    if (method === "split") {
+        const c = parseFloat(document.getElementById("splitCash").value) || 0;
+        const j = parseFloat(document.getElementById("splitJazzCash").value) || 0;
+        const d = parseFloat(document.getElementById("splitDigital").value) || 0;
+        const cr = parseFloat(document.getElementById("splitCard").value) || 0;
+        totalPaid = c + j + d + cr;
+    } else {
+        totalPaid = parseFloat(document.getElementById("cashReceivedInput").value) || 0;
+    }
+
+    let change = 0;
+    let due = 0;
+
+    if (totalPaid >= net) {
+        change = totalPaid - net;
+        due = 0;
+    } else {
+        change = 0;
+        due = net - totalPaid;
+    }
+
+    document.getElementById("changeReturnDisplay").innerText = `Rs. ${change.toLocaleString()}`;
+    document.getElementById("balanceDueDisplay").innerText = `Rs. ${due.toLocaleString()}`;
+
+    // Warn if customer is Walk-in and due > 0
+    const custId = parseInt(document.getElementById("posCustomerSelect").value) || 1;
+    const alertEl = document.getElementById("customerCreditAlert");
+    if (custId === 1 && due > 0) {
+        alertEl.innerText = "Walk-in customers cannot have credit dues! Select a Khata customer.";
+        alertEl.classList.remove("d-none");
+    } else {
+        alertEl.classList.add("d-none");
+    }
+}
+
+// Submit Checkout
+function submitCheckout(printType = 'thermal') {
+    const net = getCartNetTotal();
+    const custId = parseInt(document.getElementById("posCustomerSelect").value) || 1;
+    const method = document.getElementById("checkoutMethodSelect").value;
+    const discount = parseFloat(document.getElementById("cartBillDiscount").value) || 0;
+    const notes = document.getElementById("checkoutNotes").value.trim();
+
+    let paidAmount = 0;
+    let splitPayments = [];
+
+    if (method === "split") {
+        const c = parseFloat(document.getElementById("splitCash").value) || 0;
+        const j = parseFloat(document.getElementById("splitJazzCash").value) || 0;
+        const d = parseFloat(document.getElementById("splitDigital").value) || 0;
+        const cr = parseFloat(document.getElementById("splitCard").value) || 0;
+        paidAmount = c + j + d + cr;
+
+        if (c > 0) splitPayments.push({ method: 'cash', amount: c });
+        if (j > 0) splitPayments.push({ method: 'jazzcash', amount: j });
+        if (d > 0) splitPayments.push({ method: 'easypaisa', amount: d });
+        if (cr > 0) splitPayments.push({ method: 'card', amount: cr });
+    } else {
+        paidAmount = parseFloat(document.getElementById("cashReceivedInput").value) || 0;
+    }
+
+    if (custId === 1 && paidAmount < net) {
+        alert("Walk-in customer must pay full amount. For partial or credit Khata sales, please select a registered customer.");
+        return;
+    }
+
+    const payload = {
+        customer_id: custId,
+        items: cart,
+        bill_discount: discount,
+        payment_method: method,
+        split_payments: splitPayments,
+        paid_amount: paidAmount,
+        notes: notes
+    };
+
+    fetch('ajax/pos_checkout.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (!data.success) {
+            alert("Checkout Error: " + data.error);
+            return;
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById("checkoutModal")).hide();
+        cart = [];
+        renderCart();
+        document.getElementById("cartBillDiscount").value = 0;
+        document.getElementById("checkoutNotes").value = "";
+
+        showToast(`Invoice #${data.invoice_number} created successfully!`, "success");
+
+        // Open Printable receipt / invoice in popup
+        const printUrl = (printType === 'thermal') 
+            ? `print_receipt.php?id=${data.sale_id}&autoprint=1`
+            : `print_invoice.php?id=${data.sale_id}&autoprint=1`;
+        
+        window.open(printUrl, '_blank', 'width=600,height=750,scrollbars=yes');
+
+        // Reload products in background to refresh stock counts
+        loadProducts(document.getElementById("posSearchInput").value.trim(), currentCategory);
+
+        // Switch back to garments view on mobile
+        if (window.innerWidth < 992) {
+            switchMobileView('products');
+        }
+    })
+    .catch(err => {
+        alert("Transaction failed: " + err.message);
+    });
+}
+
+// Hold Current Sale
+function holdCurrentSale() {
+    if (cart.length === 0) {
+        showToast("Cart is empty. Nothing to hold.", "warning");
+        return;
+    }
+
+    const custId = parseInt(document.getElementById("posCustomerSelect").value) || 1;
+    const discount = parseFloat(document.getElementById("cartBillDiscount").value) || 0;
+    const net = getCartNetTotal();
+
+    const payload = {
+        customer_id: custId,
+        items: cart,
+        bill_discount: discount,
+        subtotal: net + discount,
+        net_total: net,
+        notes: prompt("Enter a note for this held sale:", "Counter Sale Hold") || "Held Sale"
+    };
+
+    fetch('ajax/pos_hold.php?action=hold', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`Sale held as #${data.hold_number}`, "info");
+            cart = [];
+            renderCart();
+            updateHeldCount();
+            if (window.innerWidth < 992) {
+                switchMobileView('products');
+            }
+        } else {
+            alert(data.error);
+        }
+    });
+}
+
+// Update Held Sales Count and Table
+function updateHeldCount() {
+    fetch('ajax/pos_hold.php?action=list')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const count = data.held_sales.length;
+                document.getElementById("heldCount").innerText = count;
+
+                const tbody = document.getElementById("heldSalesTableBody");
+                tbody.innerHTML = "";
+                if (count === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No held sales currently parked.</td></tr>';
+                } else {
+                    data.held_sales.forEach(s => {
+                        const tr = document.createElement("tr");
+                        tr.innerHTML = `
+                            <td><strong>${s.invoice_number}</strong></td>
+                            <td>${s.sale_date}</td>
+                            <td>${s.customer_name || 'Walk-in'}</td>
+                            <td>${s.item_count} items</td>
+                            <td><strong>Rs. ${parseFloat(s.net_total).toLocaleString()}</strong></td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-primary" onclick="resumeHeldSale(${s.id})">
+                                    <i class="bi bi-arrow-clockwise"></i> Resume
+                                </button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            }
+        });
+}
+
+function resumeHeldSale(saleId) {
+    if (cart.length > 0 && !confirm("Current cart has items. Resuming will overwrite current cart. Continue?")) {
+        return;
+    }
+
+    fetch(`ajax/pos_hold.php?action=load&sale_id=${saleId}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                cart = [];
+                data.items.forEach(it => {
+                    cart.push({
+                        variant_id: it.variant_id,
+                        product_id: it.product_id,
+                        product_name: it.product_name,
+                        size_name: it.size_name,
+                        color_name: it.color_name,
+                        color_hex: it.color_hex,
+                        sku: it.sku,
+                        barcode: it.barcode,
+                        unit_price: parseFloat(it.unit_price),
+                        cost_price: parseFloat(it.cost_price),
+                        qty: parseInt(it.quantity),
+                        discount: parseFloat(it.discount),
+                        max_stock: parseInt(it.stock_quantity),
+                        total_price: parseFloat(it.total_price)
+                    });
+                });
+
+                document.getElementById("cartBillDiscount").value = data.sale.bill_discount;
+                if (data.sale.customer_id) {
+                    document.getElementById("posCustomerSelect").value = data.sale.customer_id;
+                }
+
+                bootstrap.Modal.getInstance(document.getElementById("heldSalesModal")).hide();
+                renderCart();
+                updateHeldCount();
+                showToast("Held sale resumed into cart!", "success");
+
+                if (window.innerWidth < 992) {
+                    switchMobileView('cart');
+                }
+            } else {
+                alert(data.error);
+            }
+        });
+}
+
+// Quick Add Customer Save
+function saveQuickCustomer() {
+    const name = document.getElementById("quickCustName").value.trim();
+    const phone = document.getElementById("quickCustPhone").value.trim();
+    const limit = document.getElementById("quickCustLimit").value;
+    const addr = document.getElementById("quickCustAddress").value.trim();
+
+    const fd = new FormData();
+    fd.append('action', 'quick_add');
+    fd.append('name', name);
+    fd.append('phone', phone);
+    fd.append('credit_limit', limit);
+    fd.append('address', addr);
+
+    fetch('customers.php', { method: 'POST', body: fd })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const sel = document.getElementById("posCustomerSelect");
+                const opt = document.createElement("option");
+                opt.value = data.customer.id;
+                opt.innerText = `${data.customer.name} (${data.customer.phone})`;
+                opt.selected = true;
+                sel.appendChild(opt);
+
+                bootstrap.Modal.getInstance(document.getElementById("quickCustomerModal")).hide();
+                document.getElementById("quickCustomerForm").reset();
+                showToast("Khata customer created and selected!", "success");
+            } else {
+                alert("Failed to create customer: " + data.error);
+            }
+        });
+}

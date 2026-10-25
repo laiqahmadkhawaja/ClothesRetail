@@ -1,0 +1,96 @@
+<?php
+// ajax/pos_search.php - Fast Product & Barcode Search for POS
+header('Content-Type: application/json');
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/auth.php';
+
+if (!is_logged_in()) {
+    echo json_encode(['error' => 'Unauthorized']);
+    exit;
+}
+
+$query = trim($_GET['q'] ?? '');
+$category_id = intval($_GET['category_id'] ?? 0);
+
+if (empty($query) && $category_id <= 0) {
+    // Return top 20 active products by default for POS grid
+    $sql = "SELECT p.id, p.product_code, p.name, p.rack_location, p.season,
+                   c.name AS category_name, b.name AS brand_name,
+                   COUNT(pv.id) AS total_variants,
+                   COALESCE(SUM(pv.stock_quantity), 0) AS total_stock,
+                   MIN(pv.selling_price) AS min_price,
+                   MAX(pv.selling_price) AS max_price
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN brands b ON p.brand_id = b.id
+            LEFT JOIN product_variants pv ON p.id = pv.product_id AND pv.status = 'active'
+            WHERE p.status = 'active'
+            GROUP BY p.id
+            ORDER BY p.id DESC
+            LIMIT 24";
+    $stmt = $pdo->query($sql);
+    $products = $stmt->fetchAll();
+
+    echo json_encode(['exact_match' => false, 'products' => $products]);
+    exit;
+}
+
+// 1. Check for Exact Barcode / SKU match first (Immediate POS Scanner Trigger)
+if (!empty($query)) {
+    $stmt = $pdo->prepare("SELECT pv.*, p.name AS product_name, p.product_code,
+                                  s.name AS size_name, c.name AS color_name, c.hex_code AS color_hex
+                           FROM product_variants pv
+                           JOIN products p ON pv.product_id = p.id
+                           JOIN sizes s ON pv.size_id = s.id
+                           JOIN colors c ON pv.color_id = c.id
+                           WHERE (pv.barcode = ? OR pv.sku = ?) AND pv.status = 'active' AND p.status = 'active'
+                           LIMIT 1");
+    $stmt->execute([$query, $query]);
+    $variant = $stmt->fetch();
+
+    if ($variant) {
+        echo json_encode([
+            'exact_match' => true,
+            'variant'     => $variant
+        ]);
+        exit;
+    }
+}
+
+// 2. Otherwise search by text (name, code, brand, category, size, color)
+$params = [];
+$where = ["p.status = 'active'"];
+
+if (!empty($query)) {
+    $where[] = "(p.name LIKE ? OR p.product_code LIKE ? OR b.name LIKE ? OR c.name LIKE ? OR pv.sku LIKE ? OR pv.barcode LIKE ?)";
+    $like = "%$query%";
+    $params = array_merge($params, [$like, $like, $like, $like, $like, $like]);
+}
+
+if ($category_id > 0) {
+    $where[] = "p.category_id = ?";
+    $params[] = $category_id;
+}
+
+$where_clause = implode(' AND ', $where);
+
+$sql = "SELECT p.id, p.product_code, p.name, p.rack_location, p.season,
+               c.name AS category_name, b.name AS brand_name,
+               COUNT(pv.id) AS total_variants,
+               COALESCE(SUM(pv.stock_quantity), 0) AS total_stock,
+               MIN(pv.selling_price) AS min_price,
+               MAX(pv.selling_price) AS max_price
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN brands b ON p.brand_id = b.id
+        LEFT JOIN product_variants pv ON p.id = pv.product_id AND pv.status = 'active'
+        WHERE $where_clause
+        GROUP BY p.id
+        ORDER BY p.name ASC
+        LIMIT 40";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$products = $stmt->fetchAll();
+
+echo json_encode(['exact_match' => false, 'products' => $products]);

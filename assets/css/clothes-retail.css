@@ -1,0 +1,387 @@
+/* assets/css/clothes-retail.css - Custom Styling for Clothes Shop Retail ERP */
+
+:root {
+    --cr-primary: #4f46e5;
+    --cr-primary-hover: #4338ca;
+    --cr-secondary: #0ea5e9;
+    --cr-dark: #1e1b4b;
+    --cr-sidebar-bg: #0f172a;
+    --cr-sidebar-hover: #1e293b;
+    --cr-accent: #f43f5e;
+    --cr-bg: #f8fafc;
+    --cr-card-bg: #ffffff;
+    --cr-border: #e2e8f0;
+}
+
+body {
+    background-color: var(--cr-bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #334155;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* Sidebar & Navigation */
+#sidebar-wrapper {
+    min-height: 100vh;
+    width: 260px;
+    background-color: var(--cr-sidebar-bg);
+    color: #cbd5e1;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
+}
+
+#sidebar-wrapper .brand-logo {
+    padding: 1.15rem 1.25rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #ffffff;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+#sidebar-wrapper .nav-section {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+    padding: 0.85rem 1.25rem 0.3rem;
+}
+
+#sidebar-wrapper .nav-link {
+    color: #94a3b8;
+    padding: 0.6rem 1.1rem;
+    border-radius: 0.5rem;
+    margin: 0.12rem 0.65rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+#sidebar-wrapper .nav-link:hover {
+    color: #ffffff;
+    background-color: var(--cr-sidebar-hover);
+}
+
+#sidebar-wrapper .nav-link.active {
+    color: #ffffff;
+    background-color: var(--cr-primary);
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+#sidebar-wrapper .nav-link i {
+    font-size: 1.15rem;
+}
+
+/* Top Navbar */
+.top-navbar {
+    background-color: #ffffff;
+    border-bottom: 1px solid var(--cr-border);
+    padding: 0.65rem 1.25rem;
+}
+
+/* Dashboard Cards */
+.kpi-card {
+    border: none;
+    border-radius: 0.85rem;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+}
+.kpi-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+
+/* POS Specific Interface */
+.pos-product-card {
+    border: 1px solid var(--cr-border);
+    border-radius: 0.75rem;
+    background: #ffffff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+    touch-action: manipulation;
+}
+.pos-product-card:hover {
+    border-color: var(--cr-primary);
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+    transform: translateY(-2px);
+}
+.pos-product-card.out-of-stock {
+    opacity: 0.55;
+    pointer-events: none;
+    background-color: #f1f5f9;
+}
+
+.pos-cart-panel {
+    background: #ffffff;
+    border-radius: 0.85rem;
+    border: 1px solid var(--cr-border);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.pos-cart-items {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+/* Color & Size Badges */
+.color-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: inline-block;
+    vertical-align: middle;
+    border: 1px solid rgba(0, 0, 0, 0.25);
+    margin-right: 4px;
+}
+.size-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 4px;
+    background: #e2e8f0;
+    color: #1e293b;
+    border: 1px solid #cbd5e1;
+}
+
+/* Matrix Stock Table */
+.matrix-table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+.matrix-table th {
+    background-color: #f1f5f9;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    text-align: center;
+}
+.matrix-table td:first-child,
+.matrix-table th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background-color: #f8fafc;
+}
+
+/* Table Responsive Scrolling */
+.table-responsive {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ========================================================
+   MOBILE-FIRST ENHANCEMENTS & RESPONSIVE RULES (UI REVIEW)
+   ======================================================== */
+
+/* Prevent Mobile Viewport Zooming on Inputs */
+@media (max-width: 768px) {
+    input[type="text"],
+    input[type="number"],
+    input[type="search"],
+    input[type="password"],
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+
+    body {
+        padding-bottom: 60px; /* Space for Mobile Bottom Nav */
+    }
+}
+
+/* Mobile Sidebar Drawer & Backdrop */
+@media (max-width: 991.98px) {
+    #sidebar-wrapper {
+        position: fixed;
+        top: 0;
+        left: -280px;
+        width: 280px;
+        height: 100vh;
+        z-index: 1060;
+        box-shadow: 4px 0 25px rgba(0, 0, 0, 0.35);
+        display: block !important;
+    }
+
+    body.sidebar-open #sidebar-wrapper {
+        left: 0;
+    }
+
+    .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(15, 23, 42, 0.65);
+        backdrop-filter: blur(3px);
+        -webkit-backdrop-filter: blur(3px);
+        z-index: 1055;
+    }
+
+    body.sidebar-open .sidebar-backdrop {
+        display: block;
+    }
+
+    .top-navbar {
+        padding: 0.5rem 0.75rem;
+    }
+
+    .top-navbar h5 {
+        font-size: 1rem;
+    }
+}
+
+/* Mobile Bottom Navigation Bar */
+.mobile-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 58px;
+    background: #ffffff;
+    border-top: 1px solid var(--cr-border);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 1040;
+    box-shadow: 0 -3px 12px rgba(0, 0, 0, 0.06);
+}
+
+.mobile-bottom-nav .nav-item-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    text-decoration: none;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    flex: 1;
+    height: 100%;
+    transition: color 0.15s ease;
+}
+
+.mobile-bottom-nav .nav-item-btn i {
+    font-size: 1.25rem;
+    line-height: 1.1;
+    margin-bottom: 2px;
+}
+
+.mobile-bottom-nav .nav-item-btn.active,
+.mobile-bottom-nav .nav-item-btn:hover {
+    color: var(--cr-primary);
+}
+
+.mobile-bottom-nav .nav-item-btn.pos-center {
+    color: #ffffff;
+    background: var(--cr-primary);
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
+    margin-top: -16px;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+}
+.mobile-bottom-nav .nav-item-btn.pos-center i {
+    font-size: 1.35rem;
+    margin-bottom: 0;
+}
+
+/* Sticky Floating Cart Bar on Mobile POS */
+.mobile-cart-sticky-bar {
+    position: fixed;
+    bottom: 58px;
+    left: 0;
+    right: 0;
+    background: #1e1b4b;
+    color: #ffffff;
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 1030;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.15);
+}
+
+/* Touch Friendly Buttons in POS Cart */
+.touch-btn {
+    min-width: 38px;
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Mobile Tabs in POS */
+.pos-mobile-nav-tabs .nav-link {
+    font-weight: 600;
+    font-size: 0.9rem;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+}
+
+/* Printable Formats */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    .print-area, .print-area * {
+        visibility: visible;
+    }
+    .print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+    .no-print,
+    .mobile-bottom-nav,
+    .mobile-cart-sticky-bar {
+        display: none !important;
+    }
+}
+
+/* 80mm Thermal Receipt styling */
+.thermal-receipt {
+    width: 80mm;
+    margin: 0 auto;
+    padding: 10px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    line-height: 1.35;
+    color: #000;
+    background: #fff;
+}
+.thermal-receipt hr {
+    border-top: 1px dashed #000;
+    margin: 6px 0;
+}
+.thermal-receipt .text-center { text-align: center; }
+.thermal-receipt .text-end { text-align: right; }
+.thermal-receipt .bold { font-weight: bold; }
