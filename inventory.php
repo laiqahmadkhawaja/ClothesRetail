@@ -1,13 +1,15 @@
 <?php
 // inventory.php - Complete Stock Inventory, Valuation & Movements Ledger
-$page_title = 'Inventory & Stock Management';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
+require_once __DIR__ . '/config/helpers.php';
 
 $tab = $_GET['tab'] ?? 'stock';
 
 // Handle Stock Adjustment
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'adjust_stock') {
     require_role('admin', 'manager', 'inventory');
+    $user = current_user();
 
     $variant_id = intval($_POST['variant_id']);
     $adj_type = $_POST['adj_type'] === 'subtract' ? 'subtract' : 'add';
@@ -25,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             try {
                 $adjNum = 'ADJ-' . date('ymd') . '-' . mt_rand(100, 999);
                 $stmtAdj = $pdo->prepare("INSERT INTO stock_adjustments (adjustment_number, adjustment_date, reason, notes, created_by) VALUES (?, NOW(), ?, ?, ?)");
-                $stmtAdj->execute([$adjNum, $reason, $notes, $user['id']]);
+                $stmtAdj->execute([$adjNum, $reason, $notes, $user['id'] ?? 1]);
                 $adj_id = $pdo->lastInsertId();
 
                 $stmtAdjItem = $pdo->prepare("INSERT INTO stock_adjustment_items (adjustment_id, product_id, variant_id, adjustment_type, quantity, unit_cost) VALUES (?, ?, ?, ?, ?, ?)");
@@ -34,11 +36,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 if ($adj_type === 'add') {
                     $pdo->prepare("UPDATE product_variants SET stock_quantity = stock_quantity + ? WHERE id = ?")->execute([$qty, $variant_id]);
                     $pdo->prepare("INSERT INTO stock_movements (product_id, variant_id, movement_date, movement_type, reference_no, qty_in, qty_out, unit_cost, notes, created_by) VALUES (?, ?, NOW(), 'adjustment_plus', ?, ?, 0, ?, ?, ?)")
-                        ->execute([$variant['product_id'], $variant_id, $adjNum, $qty, $variant['purchase_price'], "$reason: $notes", $user['id']]);
+                        ->execute([$variant['product_id'], $variant_id, $adjNum, $qty, $variant['purchase_price'], "$reason: $notes", $user['id'] ?? 1]);
                 } else {
                     $pdo->prepare("UPDATE product_variants SET stock_quantity = GREATEST(0, stock_quantity - ?) WHERE id = ?")->execute([$qty, $variant_id]);
                     $pdo->prepare("INSERT INTO stock_movements (product_id, variant_id, movement_date, movement_type, reference_no, qty_in, qty_out, unit_cost, notes, created_by) VALUES (?, ?, NOW(), 'adjustment_minus', ?, 0, ?, ?, ?, ?)")
-                        ->execute([$variant['product_id'], $variant_id, $adjNum, $qty, $variant['purchase_price'], "$reason: $notes", $user['id']]);
+                        ->execute([$variant['product_id'], $variant_id, $adjNum, $qty, $variant['purchase_price'], "$reason: $notes", $user['id'] ?? 1]);
                 }
 
                 $pdo->commit();
@@ -53,6 +55,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: inventory.php?tab=$tab");
     exit;
 }
+
+$page_title = 'Inventory & Stock Management';
+require_once __DIR__ . '/includes/header.php';
 
 // Valuation Summary
 $stockValuation = $pdo->query("SELECT 

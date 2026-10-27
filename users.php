@@ -1,7 +1,7 @@
 <?php
 // users.php - User Accounts, Roles & RBAC Management
-$page_title = 'User Accounts & Access Control';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
 
 require_role('admin');
 
@@ -52,6 +52,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: users.php");
     exit;
 }
+
+$page_title = 'User Accounts & Access Control';
+require_once __DIR__ . '/includes/header.php';
 
 $users = $pdo->query("SELECT * FROM users ORDER BY id ASC")->fetchAll();
 $auditLogs = $pdo->query("SELECT a.*, u.full_name AS user_name, u.username

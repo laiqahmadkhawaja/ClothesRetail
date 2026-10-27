@@ -1,7 +1,7 @@
 <?php
 // categories.php - Garment Categories & Subcategories
-$page_title = 'Garment Categories';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
 
 require_role('admin', 'manager', 'inventory');
 
@@ -37,6 +37,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: categories.php");
     exit;
 }
+
+$page_title = 'Garment Categories';
+require_once __DIR__ . '/includes/header.php';
 
 // Fetch categories with product counts
 $categories = $pdo->query("SELECT c.*, COUNT(p.id) AS product_count 

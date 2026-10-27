@@ -1,7 +1,7 @@
 <?php
 // sizes_colors.php - Central Size & Color Management
-$page_title = 'Sizes & Colors Management';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
 
 require_role('admin', 'manager', 'inventory');
 
@@ -58,6 +58,9 @@ if (isset($_GET['del_color'])) {
     header("Location: sizes_colors.php");
     exit;
 }
+
+$page_title = 'Sizes & Colors Management';
+require_once __DIR__ . '/includes/header.php';
 
 $sizes = $pdo->query("SELECT s.*, COUNT(pv.id) AS variant_count 
                       FROM sizes s 

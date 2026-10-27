@@ -1,7 +1,7 @@
 <?php
 // customers.php - Customer Directory & Khata Overview
-$page_title = 'Customers & Khata Accounts';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
 
 // Quick Add / Full Add Customer
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -69,6 +69,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     }
 }
+
+$page_title = 'Customers & Khata Accounts';
+require_once __DIR__ . '/includes/header.php';
 
 // Search & Filter
 $q = trim($_GET['q'] ?? '');

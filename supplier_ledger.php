@@ -1,7 +1,8 @@
 <?php
 // supplier_ledger.php - Comprehensive Supplier Khata Statement & Payment Voucher
-$page_title = 'Supplier Khata Statement';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
+require_once __DIR__ . '/config/helpers.php';
 
 require_role('admin', 'manager', 'accountant');
 
@@ -33,7 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ->execute([$sup_id, $pay_date, ($ref_no ?: $voucherNo), $amount, $newBal, "$notes ($pay_method)"]);
 
             // If cash payment and cash register open, record payout
-            $active_reg = get_active_register($pdo, $user['id']);
+            $user = current_user();
+            $active_reg = get_active_register($pdo, $user['id'] ?? 0);
             if ($active_reg && $pay_method === 'cash') {
                 $pdo->prepare("UPDATE cash_registers SET total_supplier_paid = total_supplier_paid + ? WHERE id = ?")
                     ->execute([$amount, $active_reg['id']]);
@@ -50,6 +52,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: supplier_ledger.php?supplier_id=$sup_id");
     exit;
 }
+
+$page_title = 'Supplier Khata Statement';
+require_once __DIR__ . '/includes/header.php';
 
 $suppliers = $pdo->query("SELECT * FROM suppliers ORDER BY name ASC")->fetchAll();
 if ($supplier_id <= 0 && !empty($suppliers)) {

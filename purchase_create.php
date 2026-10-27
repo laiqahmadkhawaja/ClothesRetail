@@ -1,23 +1,13 @@
 <?php
 // purchase_create.php - Record New Stock Consignment from Supplier
-$page_title = 'New Stock Purchase';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
+require_once __DIR__ . '/config/helpers.php';
 
 require_role('admin', 'manager', 'inventory');
+$user = current_user();
 
-$suppliers = $pdo->query("SELECT * FROM suppliers WHERE status = 'active' ORDER BY name ASC")->fetchAll();
-
-// Fetch all active variants for selection
-$variants = $pdo->query("SELECT pv.id, pv.product_id, pv.sku, pv.barcode, pv.purchase_price, pv.selling_price, pv.stock_quantity,
-                                p.name AS product_name, p.product_code, s.name AS size_name, c.name AS color_name, c.hex_code AS color_hex
-                         FROM product_variants pv
-                         JOIN products p ON pv.product_id = p.id
-                         JOIN sizes s ON pv.size_id = s.id
-                         JOIN colors c ON pv.color_id = c.id
-                         WHERE pv.status = 'active' AND p.status = 'active'
-                         ORDER BY p.name ASC, s.sort_order ASC")->fetchAll();
-
-// Handle Form Submission
+// Handle Form Submission (Process BEFORE header to avoid headers already sent)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_purchase') {
     $supplier_id = intval($_POST['supplier_id']);
     $purchase_date = $_POST['purchase_date'] ?? date('Y-m-d');
@@ -92,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmtPurch->execute([
             $purchase_number, $supplier_id, $purchase_date, $subtotal, $discount, $freight,
-            $total_amount, $paid_amount, $balance_due, $payment_status, $payment_method, $notes, $user['id']
+            $total_amount, $paid_amount, $balance_due, $payment_status, $payment_method, $notes, $user['id'] ?? 1
         ]);
         $purchase_id = $pdo->lastInsertId();
 
@@ -104,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         foreach ($validated_items as $vi) {
             $stmtItem->execute([$purchase_id, $vi['product_id'], $vi['variant_id'], $vi['qty'], $vi['cost'], $vi['line_cost']]);
             $stmtStockUpd->execute([$vi['qty'], $vi['cost'], $vi['variant_id']]);
-            $stmtMove->execute([$vi['product_id'], $vi['variant_id'], $purchase_number, $vi['qty'], $vi['cost'], "Supplier Purchase #$purchase_number", $user['id']]);
+            $stmtMove->execute([$vi['product_id'], $vi['variant_id'], $purchase_number, $vi['qty'], $vi['cost'], "Supplier Purchase #$purchase_number", $user['id'] ?? 1]);
         }
 
         // Supplier Ledger Update
@@ -128,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ->execute([$supplier_id, $purchase_date, $purchase_id, $purchase_number, $paid_amount, $newSupBal, "Payment for Purchase #$purchase_number ($payment_method)"]);
 
             // If cash paid and cash register active, update register payout
-            $active_reg = get_active_register($pdo, $user['id']);
+            $active_reg = get_active_register($pdo, $user['id'] ?? 0);
             if ($active_reg && $payment_method === 'cash') {
                 $pdo->prepare("UPDATE cash_registers SET total_supplier_paid = total_supplier_paid + ? WHERE id = ?")
                     ->execute([$paid_amount, $active_reg['id']]);
@@ -151,6 +141,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
     }
 }
+
+$page_title = 'New Stock Purchase';
+require_once __DIR__ . '/includes/header.php';
+
+$suppliers = $pdo->query("SELECT * FROM suppliers WHERE status = 'active' ORDER BY name ASC")->fetchAll();
+
+// Fetch all active variants for selection
+$variants = $pdo->query("SELECT pv.id, pv.product_id, pv.sku, pv.barcode, pv.purchase_price, pv.selling_price, pv.stock_quantity,
+                                p.name AS product_name, p.product_code, s.name AS size_name, c.name AS color_name, c.hex_code AS color_hex
+                         FROM product_variants pv
+                         JOIN products p ON pv.product_id = p.id
+                         JOIN sizes s ON pv.size_id = s.id
+                         JOIN colors c ON pv.color_id = c.id
+                         WHERE pv.status = 'active' AND p.status = 'active'
+                         ORDER BY p.name ASC, s.sort_order ASC")->fetchAll();
 ?>
 
 <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">

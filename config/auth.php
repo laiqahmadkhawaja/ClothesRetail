@@ -1,5 +1,9 @@
 <?php
 // config/auth.php - Authentication and Session Management
+if (!ob_get_level()) {
+    ob_start();
+}
+
 if (session_status() === PHP_SESSION_NONE) {
     session_name('CLOTHES_RETAIL_SESSID');
     session_start();

@@ -1,9 +1,12 @@
 <?php
 // cash_register.php - Cash Drawer Management & Shift Reconciliation
-$page_title = 'Cash Register Shifts & Drawer';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
+require_once __DIR__ . '/config/helpers.php';
 
-$active_register = get_active_register($pdo, $user['id']);
+require_login();
+$user = current_user();
+$active_register = get_active_register($pdo, $user['id'] ?? 0);
 
 // Open Register Shift
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'open_shift') {
@@ -46,6 +49,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: cash_register.php");
     exit;
 }
+
+$page_title = 'Cash Register Shifts & Drawer';
+require_once __DIR__ . '/includes/header.php';
 
 // Fetch historical shifts
 $shifts = $pdo->query("SELECT cr.*, u.full_name AS cashier_name

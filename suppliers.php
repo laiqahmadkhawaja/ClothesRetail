@@ -1,7 +1,7 @@
 <?php
 // suppliers.php - Supplier Directory & Balances
-$page_title = 'Suppliers & Mill Accounts';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
 
 require_role('admin', 'manager', 'inventory', 'accountant');
 
@@ -47,6 +47,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: suppliers.php");
     exit;
 }
+
+$page_title = 'Suppliers & Mill Accounts';
+require_once __DIR__ . '/includes/header.php';
 
 $suppliers = $pdo->query("SELECT s.*, 
                                  COUNT(p.id) AS total_purchases,

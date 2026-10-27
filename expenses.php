@@ -1,7 +1,8 @@
 <?php
 // expenses.php - Store Operating Expenses & Vouchers
-$page_title = 'Store Operating Expenses';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
+require_once __DIR__ . '/config/helpers.php';
 
 require_role('admin', 'manager', 'accountant');
 
@@ -15,7 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $ref_no = trim($_POST['reference_no'] ?? '');
     $notes = trim($_POST['notes'] ?? '');
 
-    $active_reg = get_active_register($pdo, $user['id']);
+    $user = current_user();
+    $active_reg = get_active_register($pdo, $user['id'] ?? 0);
     $reg_id = $active_reg ? $active_reg['id'] : null;
 
     if ($category_id > 0 && !empty($title) && $amount > 0) {
@@ -23,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         try {
             $stmt = $pdo->prepare("INSERT INTO expenses (category_id, expense_date, title, amount, payment_method, reference_no, register_id, notes, created_by)
                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$category_id, $expense_date, $title, $amount, $payment_method, $ref_no, $reg_id, $notes, $user['id']]);
+            $stmt->execute([$category_id, $expense_date, $title, $amount, $payment_method, $ref_no, $reg_id, $notes, $user['id'] ?? 1]);
 
             // Update cash register if cash expense
             if ($reg_id && $payment_method === 'cash') {
@@ -59,6 +61,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: expenses.php");
     exit;
 }
+
+$page_title = 'Store Operating Expenses';
+require_once __DIR__ . '/includes/header.php';
 
 // Filters
 $category_id = intval($_GET['category_id'] ?? 0);

@@ -1,7 +1,8 @@
 <?php
 // customer_ledger.php - Customer Credit (Khata) Account Statement & Collection
-$page_title = 'Customer Khata Statement';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
+require_once __DIR__ . '/config/helpers.php';
 
 $customer_id = intval($_GET['customer_id'] ?? 0);
 
@@ -31,7 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ->execute([$cid, $pay_date, ($ref_no ?: $receiptNo), $amount, $newBal, "$notes ($pay_method)"]);
 
             // If cash received and register open, record cash received
-            $active_reg = get_active_register($pdo, $user['id']);
+            $user = current_user();
+            $active_reg = get_active_register($pdo, $user['id'] ?? 0);
             if ($active_reg && $pay_method === 'cash') {
                 $pdo->prepare("UPDATE cash_registers SET total_payments_received = total_payments_received + ? WHERE id = ?")
                     ->execute([$amount, $active_reg['id']]);
@@ -48,6 +50,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: customer_ledger.php?customer_id=$cid");
     exit;
 }
+
+$page_title = 'Customer Khata Statement';
+require_once __DIR__ . '/includes/header.php';
 
 $customers = $pdo->query("SELECT * FROM customers WHERE status = 'active' ORDER BY name ASC")->fetchAll();
 if ($customer_id <= 0 && !empty($customers)) {

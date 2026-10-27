@@ -1,11 +1,12 @@
 <?php
 // settings.php - Store Settings, Invoice Config & Database Backup
-$page_title = 'Store Settings & Backup';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
+require_once __DIR__ . '/config/helpers.php';
 
 require_role('admin');
 
-// Handle Backup Download
+// Handle Backup Download (Process BEFORE header output)
 if (isset($_GET['action']) && $_GET['action'] === 'backup_db') {
     $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
     $backupSql = "-- ClothesRetail Database Backup\n-- Date: " . date('Y-m-d H:i:s') . "\nSET FOREIGN_KEY_CHECKS = 0;\n\n";
@@ -34,7 +35,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'backup_db') {
     exit;
 }
 
-// Handle Settings Update
+// Handle Settings Update (Process BEFORE header output)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_settings') {
     $fields = [
         'shop_name', 'tagline', 'phone', 'email', 'address', 'currency',
@@ -55,6 +56,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: settings.php");
     exit;
 }
+
+$page_title = 'Store Settings & Backup';
+require_once __DIR__ . '/includes/header.php';
 
 $settings = get_settings($pdo);
 ?>
