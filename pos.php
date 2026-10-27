@@ -6,8 +6,23 @@ require_once __DIR__ . '/includes/header.php';
 // Fetch Categories for quick filter buttons
 $categories = $pdo->query("SELECT * FROM categories WHERE status = 'active' ORDER BY name ASC")->fetchAll();
 
-// Fetch Active Customers for Khata selection
-$customers = $pdo->query("SELECT id, customer_code, name, phone, current_balance, credit_limit FROM customers WHERE status = 'active' ORDER BY id ASC")->fetchAll();
+// Ensure Walk-in Customer (Cash) exists in the database
+$walkinCheck = $pdo->query("SELECT id FROM customers WHERE id = 1 OR customer_code = 'CUST-001' OR name LIKE '%Walk-in%' LIMIT 1")->fetch();
+if (!$walkinCheck) {
+    try {
+        $pdo->exec("INSERT INTO customers (id, customer_code, name, phone, address, credit_limit, opening_balance, current_balance, loyalty_points, status) 
+                    VALUES (1, 'CUST-001', 'Walk-in Customer (Cash)', '0300-0000000', 'Counter Sales', 0.00, 0.00, 0.00, 0, 'active')");
+    } catch (Exception $e) {
+        $pdo->exec("INSERT INTO customers (customer_code, name, phone, address, credit_limit, opening_balance, current_balance, loyalty_points, status) 
+                    VALUES ('CUST-001', 'Walk-in Customer (Cash)', '0300-0000000', 'Counter Sales', 0.00, 0.00, 0.00, 0, 'active')");
+    }
+}
+
+// Fetch Active Customers for Khata selection - Walk-in Customer sorted to the very top
+$customers = $pdo->query("SELECT id, customer_code, name, phone, current_balance, credit_limit 
+    FROM customers 
+    WHERE status = 'active' 
+    ORDER BY CASE WHEN id = 1 OR customer_code = 'CUST-001' OR name LIKE '%Walk-in%' THEN 0 ELSE 1 END, name ASC")->fetchAll();
 
 // Fetch tax rate setting
 $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
@@ -148,8 +163,14 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
                         </button>
                     </div>
                     <select id="posCustomerSelect" class="form-select form-select-sm">
-                        <?php foreach ($customers as $c): ?>
-                            <option value="<?= $c['id'] ?>" data-balance="<?= $c['current_balance'] ?>" data-limit="<?= $c['credit_limit'] ?>">
+                        <?php 
+                        $walkinSelected = false;
+                        foreach ($customers as $c): 
+                            $isWalkin = ($c['id'] == 1 || $c['customer_code'] === 'CUST-001' || stripos($c['name'], 'Walk-in') !== false);
+                            $selected = ($isWalkin && !$walkinSelected) ? 'selected' : '';
+                            if ($isWalkin) $walkinSelected = true;
+                        ?>
+                            <option value="<?= $c['id'] ?>" data-balance="<?= $c['current_balance'] ?>" data-limit="<?= $c['credit_limit'] ?>" <?= $selected ?>>
                                 <?= htmlspecialchars($c['name']) ?> (<?= $c['phone'] ?>) <?= $c['current_balance'] > 0 ? ' [Khata: Rs. ' . number_format($c['current_balance']) . ']' : '' ?>
                             </option>
                         <?php endforeach; ?>

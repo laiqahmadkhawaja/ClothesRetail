@@ -55,7 +55,22 @@ function playBeep(freq = 880, duration = 0.08) {
     } catch (e) {}
 }
 
+function resetCustomerSelectToDefault() {
+    const sel = document.getElementById("posCustomerSelect");
+    if (!sel) return;
+    for (let i = 0; i < sel.options.length; i++) {
+        const opt = sel.options[i];
+        if (opt.value === '1' || opt.text.toLowerCase().includes('walk-in')) {
+            sel.selectedIndex = i;
+            return;
+        }
+    }
+    if (sel.options.length > 0) sel.selectedIndex = 0;
+}
+window.resetCustomerSelectToDefault = resetCustomerSelectToDefault;
+
 document.addEventListener("DOMContentLoaded", function() {
+    resetCustomerSelectToDefault();
     loadProducts();
     updateHeldCount();
 
@@ -112,6 +127,7 @@ document.addEventListener("DOMContentLoaded", function() {
         if (cart.length > 0 && confirm("Are you sure you want to clear the entire cart?")) {
             cart = [];
             renderCart();
+            resetCustomerSelectToDefault();
             showToast("Cart cleared", "secondary");
         }
     });
@@ -886,6 +902,7 @@ function submitCheckout(printType = 'thermal') {
         closeCheckoutView();
         cart = [];
         renderCart();
+        resetCustomerSelectToDefault();
         document.getElementById("cartBillDiscount").value = 0;
         document.getElementById("checkoutNotes").value = "";
 
