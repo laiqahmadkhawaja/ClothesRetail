@@ -93,12 +93,30 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
     <!-- RIGHT: POS Cart, Customer Selection & Checkout Calculation -->
     <div class="col-12 col-lg-5 col-xl-4" id="posCartColumn">
         <div class="pos-cart-panel shadow-sm">
+            <!-- Rate Tier Selector: Wholesale vs Retail -->
+            <div class="px-3 py-2 bg-white border-bottom d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-1">
+                    <span class="small fw-bold text-dark"><i class="bi bi-tag-fill text-primary me-1"></i> RATE TIER:</span>
+                </div>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check" name="globalPricingTier" id="tierRetail" value="retail" checked autocomplete="off" onchange="setGlobalPricingTier('retail')">
+                    <label class="btn btn-outline-primary fw-bold px-3 py-1" for="tierRetail" title="Retail Rates [F6]">
+                        🛒 Retail (F6)
+                    </label>
+
+                    <input type="radio" class="btn-check" name="globalPricingTier" id="tierWholesale" value="wholesale" autocomplete="off" onchange="setGlobalPricingTier('wholesale')">
+                    <label class="btn btn-outline-success fw-bold px-3 py-1" for="tierWholesale" title="Wholesale Rates [F7]">
+                        📦 Wholesale (F7)
+                    </label>
+                </div>
+            </div>
+
             <!-- Customer Select Header -->
             <div class="p-2 p-md-3 border-bottom bg-light">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <label class="form-label small fw-bold text-muted mb-0">CUSTOMER (KHATA / CASH)</label>
-                    <button class="btn btn-link btn-sm p-0 text-decoration-none" data-bs-toggle="modal" data-bs-target="#quickCustomerModal">
-                        <i class="bi bi-person-plus"></i> + Add New
+                    <button class="btn btn-link btn-sm p-0 text-decoration-none fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#quickCustomerPanel" aria-expanded="false">
+                        <i class="bi bi-person-plus"></i> + Quick Add
                     </button>
                 </div>
                 <select id="posCustomerSelect" class="form-select form-select-sm">
@@ -109,6 +127,28 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
                     <?php endforeach; ?>
                 </select>
                 <div id="customerCreditAlert" class="mt-1 small text-danger d-none fw-semibold"></div>
+
+                <!-- Inline Dedicated Quick Add Customer Form -->
+                <div class="collapse mt-2" id="quickCustomerPanel">
+                    <div class="card card-body p-2 border bg-white shadow-sm">
+                        <h6 class="small fw-bold text-primary mb-2"><i class="bi bi-person-plus me-1"></i> Quick Register Khata Customer</h6>
+                        <form id="quickCustomerForm" class="row g-2">
+                            <div class="col-12">
+                                <input type="text" id="quickCustName" class="form-control form-control-sm" required placeholder="Full Name (e.g. Haji Munir)">
+                            </div>
+                            <div class="col-6">
+                                <input type="text" id="quickCustPhone" class="form-control form-control-sm" required placeholder="Mobile 0300-1234567">
+                            </div>
+                            <div class="col-6">
+                                <input type="number" id="quickCustLimit" class="form-control form-control-sm" value="25000" placeholder="Credit Limit">
+                            </div>
+                            <div class="col-12 d-flex justify-content-end gap-1">
+                                <button type="button" class="btn btn-light btn-sm" data-bs-toggle="collapse" data-bs-target="#quickCustomerPanel">Cancel</button>
+                                <button type="submit" class="btn btn-primary btn-sm px-3 fw-bold">Save & Select</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             </div>
 
             <!-- Cart Table Items -->
@@ -349,40 +389,6 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
     </div>
 </div>
 
-<!-- ========================================== -->
-<!-- MODAL: Quick Add Customer -->
-<!-- ========================================== -->
-<div class="modal fade" id="quickCustomerModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-light">
-                <h5 class="modal-title fw-bold">Add Khata Customer</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4">
-                <form id="quickCustomerForm">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">CUSTOMER FULL NAME *</label>
-                        <input type="text" id="quickCustName" class="form-control" required placeholder="e.g. Haji Munir Ahmed">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">MOBILE NUMBER *</label>
-                        <input type="text" id="quickCustPhone" class="form-control" required placeholder="0300-1234567">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">CREDIT LIMIT (RS.)</label>
-                        <input type="number" id="quickCustLimit" class="form-control" value="25000">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">SHOP / RESIDENCE ADDRESS</label>
-                        <input type="text" id="quickCustAddress" class="form-control" placeholder="Lahore">
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Save Customer & Select</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- ======================================================== -->
 <!-- MODAL: Live Camera Barcode Scanner (Auto-Zoom & Alignment) -->

@@ -135,7 +135,7 @@ $settings = get_settings($pdo);
                     <td style="color: #444; padding-left: 8px;">
                         [<?= htmlspecialchars($it['size_name']) ?> / <?= htmlspecialchars($it['color_name']) ?>]
                     </td>
-                    <td style="text-align: center;"><?= $it['quantity'] ?></td>
+                    <td style="text-align: center;"><?= rtrim(rtrim(number_format($it['quantity'], 2), '0'), '.') ?><?= !empty($it['unit_type']) && $it['unit_type'] !== 'piece' ? ' ' . $it['unit_type'] : '' ?></td>
                     <td style="text-align: right;"><?= number_format($it['unit_price'], 0) ?></td>
                     <td style="text-align: right; font-weight: bold;"><?= number_format($it['total_price'], 0) ?></td>
                 </tr>

@@ -2,6 +2,36 @@
 let cart = [];
 let currentCategory = 0;
 let taxPercent = 0; // configured from php
+let currentPricingTier = 'retail'; // 'retail' or 'wholesale'
+
+function setGlobalPricingTier(tier) {
+    currentPricingTier = (tier === 'wholesale') ? 'wholesale' : 'retail';
+    const rRadio = document.getElementById("tierRetail");
+    const wRadio = document.getElementById("tierWholesale");
+    if (rRadio && wRadio) {
+        if (currentPricingTier === 'wholesale') {
+            wRadio.checked = true;
+        } else {
+            rRadio.checked = true;
+        }
+    }
+
+    // Update prices of existing items in cart
+    cart.forEach(item => {
+        let baseRate = (currentPricingTier === 'wholesale' && item.wholesale_price > 0) ? item.wholesale_price : item.selling_price;
+        if (item.unit_type === 'suit' && item.meters_per_suit > 0) {
+            item.unit_price = baseRate * item.meters_per_suit;
+        } else {
+            item.unit_price = baseRate;
+        }
+        item.pricing_tier = currentPricingTier;
+        item.total_price = (item.qty * item.unit_price) - item.discount;
+    });
+
+    renderCart();
+    showToast(`Switched to ${currentPricingTier === 'wholesale' ? 'Wholesale (تھوک)' : 'Retail (پرچون)'} Rates`, 'info');
+}
+window.setGlobalPricingTier = setGlobalPricingTier;
 
 // Audio feedback for barcode scans
 const audioCtx = (window.AudioContext || window.webkitAudioContext) ? new (window.AudioContext || window.webkitAudioContext)() : null;
@@ -153,6 +183,12 @@ document.addEventListener("DOMContentLoaded", function() {
         } else if (e.key === "F4") {
             e.preventDefault();
             holdCurrentSale();
+        } else if (e.key === "F6") {
+            e.preventDefault();
+            setGlobalPricingTier('retail');
+        } else if (e.key === "F7") {
+            e.preventDefault();
+            setGlobalPricingTier('wholesale');
         } else if (e.key === "F8") {
             e.preventDefault();
             openCheckoutModal();
@@ -213,12 +249,15 @@ function loadProducts(query = '', category_id = 0) {
             }
 
             data.products.forEach(p => {
-                const totalStock = parseInt(p.total_stock) || 0;
-                const minPrice = parseFloat(p.min_price) || 0;
-                const maxPrice = parseFloat(p.max_price) || 0;
+                const totalStock = parseFloat(p.total_stock) || 0;
+                const minPrice = parseFloat(p.min_price) || parseFloat(p.default_selling_price) || 0;
+                const maxPrice = parseFloat(p.max_price) || minPrice;
+                const minWholesale = parseFloat(p.min_wholesale_price) || parseFloat(p.default_wholesale_price) || 0;
                 const priceLabel = (minPrice === maxPrice) ? `Rs. ${minPrice.toLocaleString()}` : `Rs. ${minPrice.toLocaleString()} - ${maxPrice.toLocaleString()}`;
 
                 const isOutOfStock = totalStock <= 0;
+                const isFabric = (p.item_type === 'fabric');
+                const unitLabel = isFabric ? (p.unit_type || 'm') : 'pcs';
 
                 const col = document.createElement("div");
                 col.className = "col-6 col-sm-4 col-md-3 col-xl-2";
@@ -228,15 +267,20 @@ function loadProducts(query = '', category_id = 0) {
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <span class="badge bg-light text-dark border" style="font-size: 0.65rem;">${p.product_code}</span>
                                 <span class="badge ${totalStock > 5 ? 'bg-success-subtle text-success' : (totalStock > 0 ? 'bg-warning-subtle text-warning' : 'bg-danger-subtle text-danger')}" style="font-size: 0.65rem;">
-                                    ${totalStock} in stock
+                                    ${parseFloat(totalStock.toFixed(2))} ${unitLabel}
                                 </span>
                             </div>
-                            <div class="fw-bold text-dark small text-truncate" title="${p.name}">${p.name}</div>
+                            <div class="fw-bold text-dark small text-truncate" title="${p.name}">
+                                ${isFabric ? '🧵 ' : ''}${p.name}
+                            </div>
                             <div class="text-muted" style="font-size: 0.7rem;">${p.category_name || ''} &bull; ${p.brand_name || ''}</div>
                         </div>
-                        <div class="mt-2 pt-1 border-top d-flex justify-content-between align-items-center">
-                            <strong class="text-primary small">${priceLabel}</strong>
-                            <i class="bi bi-grid-3x3-gap-fill text-muted small"></i>
+                        <div class="mt-2 pt-1 border-top">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <strong class="text-primary small">${priceLabel}</strong>
+                                ${isFabric ? `<span class="badge bg-purple-subtle text-purple" style="font-size: 0.6rem; background-color: #f3e8ff; color: #6b21a8;">Thaan</span>` : '<i class="bi bi-grid-3x3-gap-fill text-muted small"></i>'}
+                            </div>
+                            ${minWholesale > 0 ? `<div class="text-success" style="font-size: 0.68rem;">W-Sale: Rs. ${minWholesale.toLocaleString()}</div>` : ''}
                         </div>
                     </div>
                 `;
@@ -279,9 +323,13 @@ function selectProductForVariants(productId) {
             }
 
             const p = data.product;
+            const isFabric = (p.item_type === 'fabric');
+            const suitMeters = parseFloat(p.meters_per_suit) || 4.5;
+
             document.getElementById("variantModalTitle").innerHTML = `
-                <i class="bi bi-tag-fill me-2"></i> ${p.name}
+                <i class="bi ${isFabric ? 'bi-scissors' : 'bi-tag-fill'} me-2"></i> ${p.name}
                 <span class="badge bg-white text-dark ms-2 fw-normal small">${p.product_code}</span>
+                ${isFabric ? `<span class="badge bg-purple text-white ms-1" style="background-color: #7c3aed;">Fabric / Thaan</span>` : ''}
             `;
 
             const container = document.getElementById("variantGridContainer");
@@ -291,27 +339,44 @@ function selectProductForVariants(productId) {
                 container.innerHTML = '<div class="col-12 text-center text-muted py-3">No variants configured for this product. Use Size & Color Matrix to configure variants.</div>';
             } else {
                 data.variants.forEach(v => {
-                    const stock = parseInt(v.stock_quantity) || 0;
+                    const stock = parseFloat(v.stock_quantity) || 0;
                     const isOut = stock <= 0;
+                    const sellPrice = parseFloat(v.selling_price) || 0;
+                    const wholesalePrice = parseFloat(v.wholesale_price) || 0;
+                    const suitSellPrice = sellPrice * suitMeters;
+                    const suitWholesalePrice = wholesalePrice * suitMeters;
 
                     const col = document.createElement("div");
                     col.className = "col-12 col-sm-6 col-md-4";
                     col.innerHTML = `
-                        <div class="card p-2 border ${isOut ? 'bg-light text-muted opacity-50' : 'border-primary-subtle shadow-sm'} h-100" style="cursor: ${isOut ? 'not-allowed' : 'pointer'}; touch-action: manipulation;" onclick='${isOut ? '' : `chooseVariant(${JSON.stringify(v)})`}'>
+                        <div class="card p-2 border ${isOut ? 'bg-light text-muted opacity-50' : 'border-primary-subtle shadow-sm'} h-100" style="cursor: ${isOut ? 'not-allowed' : 'pointer'}; touch-action: manipulation;" onclick='${isOut ? '' : `chooseVariantWithUnit(${JSON.stringify(v)}, ${JSON.stringify(p)}, "${isFabric ? 'meter' : 'piece'}")`}'>
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <div>
-                                    <span class="size-badge me-1">Size ${v.size_name}</span>
+                                    <span class="size-badge me-1">${v.size_name}</span>
                                     <span class="color-dot" style="background-color: ${v.color_hex};"></span>
                                     <span class="small fw-semibold">${v.color_name}</span>
                                 </div>
                                 <span class="badge ${stock > 3 ? 'bg-success' : (stock > 0 ? 'bg-warning text-dark' : 'bg-danger')}">
-                                    ${stock} left
+                                    ${parseFloat(stock.toFixed(2))} ${isFabric ? (p.unit_type || 'm') : 'left'}
                                 </span>
                             </div>
-                            <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top">
-                                <span class="small text-muted">SKU: ${v.sku}</span>
-                                <strong class="text-primary">Rs. ${parseFloat(v.selling_price).toLocaleString()}</strong>
+                            <div class="mt-2 pt-1 border-top">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="small text-muted">SKU: ${v.sku}</span>
+                                    <strong class="text-primary">Rs. ${sellPrice.toLocaleString()} <small class="text-muted">/${isFabric ? (p.unit_type || 'm') : 'pc'}</small></strong>
+                                </div>
+                                ${wholesalePrice > 0 ? `<div class="small text-success text-end">W-Sale: Rs. ${wholesalePrice.toLocaleString()}</div>` : ''}
                             </div>
+                            ${isFabric && suitMeters > 0 ? `
+                                <div class="d-flex gap-1 mt-2 pt-2 border-top" onclick="event.stopPropagation()">
+                                    <button class="btn btn-sm btn-outline-primary py-1 flex-fill fw-semibold" style="font-size: 0.75rem;" onclick='chooseVariantWithUnit(${JSON.stringify(v)}, ${JSON.stringify(p)}, "meter")'>
+                                        + Meter (Rs. ${sellPrice})
+                                    </button>
+                                    <button class="btn btn-sm btn-primary py-1 flex-fill fw-semibold" style="font-size: 0.75rem;" onclick='chooseVariantWithUnit(${JSON.stringify(v)}, ${JSON.stringify(p)}, "suit")'>
+                                        + Suit ${suitMeters}m (Rs. ${suitSellPrice.toLocaleString()})
+                                    </button>
+                                </div>
+                            ` : ''}
                         </div>
                     `;
                     container.appendChild(col);
@@ -324,31 +389,43 @@ function selectProductForVariants(productId) {
         .catch(err => console.error(err));
 }
 
-// When a variant is picked in the modal
-function chooseVariant(variant) {
-    bootstrap.Modal.getInstance(document.getElementById("variantSelectModal")).hide();
+// When a variant is picked in the modal with specific unit
+function chooseVariantWithUnit(variant, product, unit = null) {
+    const modalEl = document.getElementById("variantSelectModal");
+    const instance = bootstrap.Modal.getInstance(modalEl);
+    if (instance) instance.hide();
+
     playBeep(920, 0.08);
-    addVariantToCart(variant, 1);
-    showToast(`Added: ${variant.size_name} / ${variant.color_name}`, "success");
+    addVariantToCart(variant, 1, unit, product);
+    showToast(`Added: ${variant.size_name} / ${variant.color_name} (${unit || 'unit'})`, "success");
 }
 
-// Add Variant to Cart
-function addVariantToCart(variant, qty = 1) {
-    const existing = cart.find(item => item.variant_id === variant.id);
-    const availableStock = parseInt(variant.stock_quantity) || 0;
+function chooseVariant(variant) {
+    chooseVariantWithUnit(variant, null, null);
+}
+
+// Add Variant to Cart with Fabric & Pricing Tier support
+function addVariantToCart(variant, qty = 1, unit = null, prodMeta = null) {
+    const itemType = (variant.item_type || (prodMeta && prodMeta.item_type) || 'readymade');
+    const unitType = unit || (variant.unit_type || (prodMeta && prodMeta.unit_type) || 'piece');
+    const metersPerSuit = parseFloat(variant.meters_per_suit || (prodMeta && prodMeta.meters_per_suit) || 4.5);
+
+    const sellPrice = parseFloat(variant.selling_price) || 0;
+    const wholesalePrice = parseFloat(variant.wholesale_price) || 0;
+    let baseRate = (currentPricingTier === 'wholesale' && wholesalePrice > 0) ? wholesalePrice : sellPrice;
+
+    let finalPrice = baseRate;
+    if (unitType === 'suit' && metersPerSuit > 0) {
+        finalPrice = baseRate * metersPerSuit;
+    }
+
+    const availableStock = parseFloat(variant.stock_quantity) || 0;
+    const existing = cart.find(item => item.variant_id === variant.id && item.unit_type === unitType && item.pricing_tier === currentPricingTier);
 
     if (existing) {
-        if (existing.qty + qty > availableStock) {
-            alert(`Cannot add more. Only ${availableStock} units available in stock for this variant.`);
-            return;
-        }
         existing.qty += qty;
         existing.total_price = (existing.qty * existing.unit_price) - existing.discount;
     } else {
-        if (qty > availableStock) {
-            alert(`Cannot add. Only ${availableStock} units available in stock.`);
-            return;
-        }
         cart.push({
             variant_id: variant.id,
             product_id: variant.product_id,
@@ -358,19 +435,25 @@ function addVariantToCart(variant, qty = 1) {
             color_hex: variant.color_hex,
             sku: variant.sku,
             barcode: variant.barcode,
-            unit_price: parseFloat(variant.selling_price),
-            cost_price: parseFloat(variant.purchase_price),
+            item_type: itemType,
+            unit_type: unitType,
+            meters_per_suit: metersPerSuit,
+            selling_price: sellPrice,
+            wholesale_price: wholesalePrice,
+            pricing_tier: currentPricingTier,
+            unit_price: finalPrice,
+            cost_price: parseFloat(variant.purchase_price) || 0,
             qty: qty,
             discount: 0,
             max_stock: availableStock,
-            total_price: parseFloat(variant.selling_price) * qty
+            total_price: finalPrice * qty
         });
     }
 
     renderCart();
 }
 
-// Render Cart Table
+// Render Cart Table with Generic Fabric & Tier Toggles
 function renderCart() {
     const tbody = document.getElementById("cartTableBody");
     tbody.innerHTML = "";
@@ -381,7 +464,7 @@ function renderCart() {
                 <td colspan="5" class="text-center py-5 text-muted">
                     <i class="bi bi-cart3 display-6 d-block text-secondary mb-2"></i>
                     Cart is empty<br>
-                    <small>Scan barcode or tap a garment card</small>
+                    <small>Scan barcode or tap a garment/fabric card</small>
                 </td>
             </tr>`;
         calculateTotals();
@@ -389,31 +472,49 @@ function renderCart() {
     }
 
     cart.forEach((item, index) => {
+        const isFabric = (item.item_type === 'fabric');
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td>
-                <div class="fw-semibold text-dark text-truncate" style="max-width: 130px;">${item.product_name}</div>
-                <div class="d-flex align-items-center gap-1 mt-1">
+                <div class="fw-semibold text-dark text-truncate" style="max-width: 140px;" title="${item.product_name}">
+                    ${isFabric ? '🧵 ' : ''}${item.product_name}
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-1 mt-1">
                     <span class="size-badge">${item.size_name}</span>
                     <span class="color-dot" style="background-color: ${item.color_hex};"></span>
                     <small class="text-muted" style="font-size: 0.68rem;">${item.color_name}</small>
+                    <span class="badge ${item.pricing_tier === 'wholesale' ? 'bg-success-subtle text-success border border-success' : 'bg-primary-subtle text-primary border'} px-1 py-0" style="font-size: 0.65rem; cursor: pointer;" onclick="toggleItemTier(${index})" title="Toggle Retail / Wholesale rate">
+                        ${item.pricing_tier === 'wholesale' ? '📦 W-Sale' : '🛒 Retail'}
+                    </span>
                 </div>
             </td>
             <td class="text-center">
-                <div class="input-group input-group-sm justify-content-center" style="width: 95px;">
-                    <button class="btn btn-outline-secondary touch-btn px-2 py-0" onclick="changeQty(${index}, -1)">-</button>
-                    <input type="text" class="form-control form-control-sm text-center px-0 py-0 fw-bold" value="${item.qty}" readonly style="width: 28px;">
-                    <button class="btn btn-outline-secondary touch-btn px-2 py-0" onclick="changeQty(${index}, 1)">+</button>
+                <div class="d-flex flex-column align-items-center">
+                    <div class="input-group input-group-sm justify-content-center" style="width: 105px;">
+                        <button class="btn btn-outline-secondary touch-btn px-1 py-0" onclick="changeQty(${index}, -${isFabric ? 0.5 : 1})">-</button>
+                        <input type="number" step="${isFabric ? 0.25 : 1}" class="form-control form-control-sm text-center px-1 py-0 fw-bold" value="${item.qty}" onchange="changeQtyDirect(${index}, this.value)" style="width: 48px;">
+                        <button class="btn btn-outline-secondary touch-btn px-1 py-0" onclick="changeQty(${index}, ${isFabric ? 0.5 : 1})">+</button>
+                    </div>
+                    <div class="d-flex align-items-center gap-1 mt-1">
+                        ${isFabric ? `
+                            <button type="button" class="badge ${item.unit_type === 'suit' ? 'bg-primary text-white' : 'bg-light text-dark border'} border-0 p-1" style="font-size: 0.65rem; cursor: pointer;" onclick="toggleItemUnit(${index})">
+                                ${item.unit_type === 'suit' ? 'Suit (' + item.meters_per_suit + 'm)' : 'Meters'}
+                            </button>
+                        ` : `
+                            <small class="text-muted" style="font-size: 0.65rem;">${item.unit_type || 'pcs'}</small>
+                        `}
+                    </div>
                 </div>
             </td>
             <td class="text-end">
-                <input type="number" class="form-control form-control-sm text-end px-1 py-0" value="${item.unit_price}" onchange="changePrice(${index}, this.value)" style="width: 70px; display: inline-block;">
+                <input type="number" step="0.01" class="form-control form-control-sm text-end px-1 py-0" value="${item.unit_price}" onchange="changePrice(${index}, this.value)" style="width: 72px; display: inline-block;">
+                <small class="d-block text-muted" style="font-size: 0.65rem;">/${item.unit_type}</small>
             </td>
             <td class="text-end fw-bold text-dark">
-                Rs. ${item.total_price.toLocaleString()}
+                Rs. ${Math.round(item.total_price).toLocaleString()}
             </td>
             <td class="text-center">
-                <button class="btn btn-link text-danger p-0" onclick="removeCartItem(${index})" title="Remove">
+                <button class="btn btn-link text-danger p-0" onclick="removeCartItem(${index})" title="Remove item">
                     <i class="bi bi-x-circle fs-6"></i>
                 </button>
             </td>
@@ -424,18 +525,55 @@ function renderCart() {
     calculateTotals();
 }
 
+function toggleItemTier(index) {
+    const item = cart[index];
+    const newTier = (item.pricing_tier === 'wholesale') ? 'retail' : 'wholesale';
+    item.pricing_tier = newTier;
+    let baseRate = (newTier === 'wholesale' && item.wholesale_price > 0) ? item.wholesale_price : item.selling_price;
+    if (item.unit_type === 'suit' && item.meters_per_suit > 0) {
+        item.unit_price = baseRate * item.meters_per_suit;
+    } else {
+        item.unit_price = baseRate;
+    }
+    item.total_price = (item.qty * item.unit_price) - item.discount;
+    renderCart();
+}
+
+function toggleItemUnit(index) {
+    const item = cart[index];
+    const baseRate = (item.pricing_tier === 'wholesale' && item.wholesale_price > 0) ? item.wholesale_price : item.selling_price;
+    if (item.unit_type === 'suit') {
+        item.unit_type = 'meter';
+        item.unit_price = baseRate;
+    } else {
+        item.unit_type = 'suit';
+        const m = item.meters_per_suit > 0 ? item.meters_per_suit : 4.5;
+        item.unit_price = baseRate * m;
+    }
+    item.total_price = (item.qty * item.unit_price) - item.discount;
+    renderCart();
+}
+
 function changeQty(index, delta) {
     const item = cart[index];
-    const newQty = item.qty + delta;
+    const newQty = Math.max(0.25, parseFloat((item.qty + delta).toFixed(2)));
     if (newQty <= 0) {
         removeCartItem(index);
         return;
     }
-    if (newQty > item.max_stock) {
-        alert(`Maximum available stock is ${item.max_stock}.`);
+    item.qty = newQty;
+    item.total_price = (item.qty * item.unit_price) - item.discount;
+    renderCart();
+}
+
+function changeQtyDirect(index, val) {
+    const item = cart[index];
+    let q = parseFloat(val);
+    if (isNaN(q) || q <= 0) {
+        removeCartItem(index);
         return;
     }
-    item.qty = newQty;
+    item.qty = q;
     item.total_price = (item.qty * item.unit_price) - item.discount;
     renderCart();
 }
@@ -592,7 +730,8 @@ function submitCheckout(printType = 'thermal') {
         payment_method: method,
         split_payments: splitPayments,
         paid_amount: paidAmount,
-        notes: notes
+        notes: notes,
+        pricing_tier: currentPricingTier
     };
 
     fetch('ajax/pos_checkout.php', {
@@ -784,7 +923,11 @@ function saveQuickCustomer() {
                 opt.selected = true;
                 sel.appendChild(opt);
 
-                bootstrap.Modal.getInstance(document.getElementById("quickCustomerModal")).hide();
+                const panel = document.getElementById("quickCustomerPanel");
+                if (panel) {
+                    const bsCollapse = bootstrap.Collapse.getInstance(panel) || new bootstrap.Collapse(panel, {toggle: false});
+                    bsCollapse.hide();
+                }
                 document.getElementById("quickCustomerForm").reset();
                 showToast("Khata customer created and selected!", "success");
             } else {

@@ -1,12 +1,14 @@
 <?php
-// sizes_colors.php - Central Size & Color Management
+// sizes_colors.php - Central Size & Color Management Dedicated Forms
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/config/auth.php';
 
 require_role('admin', 'manager', 'inventory');
 
+$action = $_GET['action'] ?? 'list';
+
 // 1. Add Size
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_size') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_action']) && $_POST['form_action'] === 'add_size') {
     $name = trim($_POST['name']);
     $group = trim($_POST['size_group'] ?? 'Standard');
     $sort = intval($_POST['sort_order'] ?? 0);
@@ -21,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // 2. Add Color
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_color') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_action']) && $_POST['form_action'] === 'add_color') {
     $name = trim($_POST['name']);
     $hex = trim($_POST['hex_code'] ?? '#000000');
 
@@ -59,9 +61,120 @@ if (isset($_GET['del_color'])) {
     exit;
 }
 
-$page_title = 'Sizes & Colors Management';
+$page_title = ($action === 'add_size') ? 'Add Clothing Size' : (($action === 'add_color') ? 'Add Color Swatch' : 'Sizes & Colors Management');
 require_once __DIR__ . '/includes/header.php';
+?>
 
+<?php if ($action === 'add_size'): ?>
+<!-- DEDICATED FORM: ADD SIZE -->
+<div class="row justify-content-center">
+    <div class="col-12 col-md-6 col-lg-5">
+        <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+            <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-3">
+                <div>
+                    <h5 class="fw-bold mb-0 text-primary">
+                        <i class="bi bi-rulers me-2"></i> Add Clothing / Fabric Size
+                    </h5>
+                    <small class="text-muted">Dedicated form for size definitions</small>
+                </div>
+                <a href="sizes_colors.php" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i> Back
+                </a>
+            </div>
+
+            <form method="POST" action="sizes_colors.php">
+                <input type="hidden" name="form_action" value="add_size">
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">SIZE LABEL / NAME *</label>
+                    <input type="text" name="name" class="form-control form-control-lg fw-bold" required 
+                           placeholder="e.g. XL, 38, 4.5m Suit, Free Size" autofocus>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">SIZE GROUP</label>
+                    <select name="size_group" class="form-select">
+                        <option value="Standard">Standard (S, M, L, XL, XXL)</option>
+                        <option value="Suits & Fabric">Suits & Fabric (4.0m, 4.5m, Thaan)</option>
+                        <option value="Numeric Waist">Numeric Waist (28, 30, 32, 34, 36)</option>
+                        <option value="Kids Age">Kids Age (2Y, 4Y, 6Y, 8Y)</option>
+                        <option value="Collar / Neck">Collar / Neck (14.5, 15, 15.5, 16)</option>
+                        <option value="Free Size">Free Size / Unstitched</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small fw-bold">DISPLAY SORT ORDER</label>
+                    <input type="number" name="sort_order" class="form-control" value="10">
+                    <small class="text-muted">Lower numbers appear first in the Matrix and POS</small>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                    <a href="sizes_colors.php" class="btn btn-light">Cancel</a>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">
+                        <i class="bi bi-check2-circle me-1"></i> Save Size
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?php elseif ($action === 'add_color'): ?>
+<!-- DEDICATED FORM: ADD COLOR -->
+<div class="row justify-content-center">
+    <div class="col-12 col-md-6 col-lg-5">
+        <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+            <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-3">
+                <div>
+                    <h5 class="fw-bold mb-0 text-info">
+                        <i class="bi bi-palette me-2"></i> Add Color Swatch
+                    </h5>
+                    <small class="text-muted">Dedicated form for color swatches</small>
+                </div>
+                <a href="sizes_colors.php" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i> Back
+                </a>
+            </div>
+
+            <form method="POST" action="sizes_colors.php">
+                <input type="hidden" name="form_action" value="add_color">
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">COLOR NAME *</label>
+                    <input type="text" name="name" class="form-control form-control-lg fw-bold" required 
+                           placeholder="e.g. Royal Navy, Olive Green, Boski White, Maroon" autofocus>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small fw-bold">VISUAL COLOR SWATCH / HEX CODE</label>
+                    <div class="input-group">
+                        <input type="color" name="hex_code" id="colorPicker" class="form-control form-control-color" value="#1e3a8a" title="Choose color">
+                        <input type="text" id="hexText" class="form-control font-monospace" value="#1e3a8a" readonly>
+                    </div>
+                    <small class="text-muted">Pick color tone for POS dots and matrix swatches</small>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                    <a href="sizes_colors.php" class="btn btn-light">Cancel</a>
+                    <button type="submit" class="btn btn-info text-white px-4 fw-bold">
+                        <i class="bi bi-check2-circle me-1"></i> Save Color Swatch
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('colorPicker')?.addEventListener('input', function() {
+    document.getElementById('hexText').value = this.value;
+});
+</script>
+
+<?php else: ?>
+<!-- LIST VIEW -->
+<?php
 $sizes = $pdo->query("SELECT s.*, COUNT(pv.id) AS variant_count 
                       FROM sizes s 
                       LEFT JOIN product_variants pv ON s.id = pv.size_id 
@@ -81,12 +194,12 @@ $colors = $pdo->query("SELECT c.*, COUNT(pv.id) AS variant_count
         <div class="card border-0 shadow-sm rounded-3">
             <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
                 <div>
-                    <h5 class="fw-bold mb-0 text-dark"><i class="bi bi-rulers text-primary me-2"></i> Clothing Sizes</h5>
-                    <small class="text-muted">XS-XXL, Numeric waist, Kids ages</small>
+                    <h5 class="fw-bold mb-0 text-dark"><i class="bi bi-rulers text-primary me-2"></i> Clothing & Fabric Sizes</h5>
+                    <small class="text-muted">Standard, numeric, suit lengths & custom</small>
                 </div>
-                <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addSizeModal">
+                <a href="sizes_colors.php?action=add_size" class="btn btn-primary btn-sm">
                     <i class="bi bi-plus-circle me-1"></i> Add Size
-                </button>
+                </a>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
@@ -124,12 +237,12 @@ $colors = $pdo->query("SELECT c.*, COUNT(pv.id) AS variant_count
         <div class="card border-0 shadow-sm rounded-3">
             <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
                 <div>
-                    <h5 class="fw-bold mb-0 text-dark"><i class="bi bi-palette text-info me-2"></i> Fabric Colors</h5>
+                    <h5 class="fw-bold mb-0 text-dark"><i class="bi bi-palette text-info me-2"></i> Fabric & Garment Colors</h5>
                     <small class="text-muted">Color names & visual swatches</small>
                 </div>
-                <button class="btn btn-info btn-sm text-white" data-bs-toggle="modal" data-bs-target="#addColorModal">
+                <a href="sizes_colors.php?action=add_color" class="btn btn-info btn-sm text-white">
                     <i class="bi bi-plus-circle me-1"></i> Add Color
-                </button>
+                </a>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
@@ -146,10 +259,10 @@ $colors = $pdo->query("SELECT c.*, COUNT(pv.id) AS variant_count
                         <?php foreach ($colors as $c): ?>
                             <tr>
                                 <td>
-                                    <span class="color-dot" style="width: 22px; height: 22px; background-color: <?= htmlspecialchars($c['hex_code']) ?>;"></span>
+                                    <span class="color-dot" style="background-color: <?= $c['hex_code'] ?>; width: 22px; height: 22px; border: 1px solid #ccc;"></span>
                                 </td>
                                 <td><strong class="text-dark"><?= htmlspecialchars($c['name']) ?></strong></td>
-                                <td><code><?= htmlspecialchars($c['hex_code']) ?></code></td>
+                                <td><code class="small"><?= htmlspecialchars($c['hex_code']) ?></code></td>
                                 <td><small class="fw-bold"><?= $c['variant_count'] ?></small></td>
                                 <td class="text-end">
                                     <a href="sizes_colors.php?del_color=<?= $c['id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this color?')">
@@ -164,76 +277,6 @@ $colors = $pdo->query("SELECT c.*, COUNT(pv.id) AS variant_count
         </div>
     </div>
 </div>
-
-<!-- Modal Add Size -->
-<div class="modal fade" id="addSizeModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title fw-bold">Add Clothing Size</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form method="POST" action="sizes_colors.php">
-                <input type="hidden" name="action" value="add_size">
-                <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">SIZE LABEL *</label>
-                        <input type="text" name="name" class="form-control" required placeholder="e.g. 3XL, 38, 10-11Y">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">SIZE SYSTEM / GROUP</label>
-                        <select name="size_group" class="form-select">
-                            <option value="Standard">Standard (XS, S, M, L, XL, XXL, 3XL)</option>
-                            <option value="Numeric">Numeric Waist/Chest (28, 30, 32, 34, 36, 38, 40)</option>
-                            <option value="Kids">Kids Age (2-3Y, 4-5Y, 6-7Y, 8-9Y, 10-12Y)</option>
-                            <option value="Shoes">Shoe Sizes (6, 7, 8, 9, 10, 11)</option>
-                            <option value="Custom">Custom / Free Size</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">SORT ORDER</label>
-                        <input type="number" name="sort_order" class="form-control" value="10">
-                    </div>
-                </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Size</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Modal Add Color -->
-<div class="modal fade" id="addColorModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-info text-white">
-                <h5 class="modal-title fw-bold">Add Fabric Color</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form method="POST" action="sizes_colors.php">
-                <input type="hidden" name="action" value="add_color">
-                <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">COLOR NAME *</label>
-                        <input type="text" name="name" class="form-control" required placeholder="e.g. Olive Green, Charcoal Grey, Maroon">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">SWATCH COLOR PICKER</label>
-                        <div class="d-flex gap-2 align-items-center">
-                            <input type="color" name="hex_code" id="colorPicker" class="form-control form-control-color" value="#1a1a1a" style="width: 50px;">
-                            <span class="small text-muted">Select exact swatch color for POS & cards</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-info text-white">Save Color</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

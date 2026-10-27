@@ -63,8 +63,8 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </a>
 
             <div class="nav-section">Catalog & Variants</div>
-            <a href="products.php" class="nav-link <?= $current_page == 'products.php' ? 'active' : '' ?>">
-                <i class="bi bi-tags"></i> Products Catalog
+            <a href="products.php" class="nav-link <?= in_array($current_page, ['products.php', 'product_form.php', 'product_create.php', 'product_edit.php']) ? 'active' : '' ?>">
+                <i class="bi bi-tags"></i> Products & Fabrics
             </a>
             <a href="product_matrix.php" class="nav-link <?= $current_page == 'product_matrix.php' ? 'active' : '' ?>">
                 <i class="bi bi-grid-3x3-gap"></i> Size & Color Matrix

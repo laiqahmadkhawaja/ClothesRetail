@@ -1,12 +1,15 @@
 <?php
-// suppliers.php - Supplier Directory & Balances
+// suppliers.php - Supplier Directory & Dedicated Forms
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/config/auth.php';
 
 require_role('admin', 'manager', 'inventory', 'accountant');
 
+$action = $_GET['action'] ?? 'list';
+$edit_id = intval($_GET['id'] ?? 0);
+
 // Add Supplier
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_supplier') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_action']) && $_POST['form_action'] === 'add') {
     $name = trim($_POST['name']);
     $company = trim($_POST['company_name'] ?? '');
     $phone = trim($_POST['phone']);
@@ -32,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // Edit Supplier
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_supplier') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_action']) && $_POST['form_action'] === 'edit') {
     $id = intval($_POST['id']);
     $name = trim($_POST['name']);
     $company = trim($_POST['company_name'] ?? '');
@@ -41,16 +44,121 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $address = trim($_POST['address'] ?? '');
     $status = $_POST['status'] ?? 'active';
 
-    $stmt = $pdo->prepare("UPDATE suppliers SET name = ?, company_name = ?, phone = ?, email = ?, address = ?, status = ? WHERE id = ?");
-    $stmt->execute([$name, $company, $phone, $email, $address, $status, $id]);
-    $_SESSION['flash_success'] = "Supplier details updated!";
+    if (!empty($name) && !empty($phone) && $id > 0) {
+        $stmt = $pdo->prepare("UPDATE suppliers SET name = ?, company_name = ?, phone = ?, email = ?, address = ?, status = ? WHERE id = ?");
+        $stmt->execute([$name, $company, $phone, $email, $address, $status, $id]);
+        $_SESSION['flash_success'] = "Supplier details updated!";
+    }
     header("Location: suppliers.php");
     exit;
 }
 
-$page_title = 'Suppliers & Mill Accounts';
-require_once __DIR__ . '/includes/header.php';
+$edit_supplier = null;
+if ($action === 'edit' && $edit_id > 0) {
+    $stmt = $pdo->prepare("SELECT * FROM suppliers WHERE id = ?");
+    $stmt->execute([$edit_id]);
+    $edit_supplier = $stmt->fetch();
+    if (!$edit_supplier) {
+        $_SESSION['flash_error'] = "Supplier #$edit_id not found.";
+        header("Location: suppliers.php");
+        exit;
+    }
+}
 
+$page_title = ($action === 'create') ? 'Add Supplier' : (($action === 'edit') ? 'Edit Supplier' : 'Suppliers & Mill Accounts');
+require_once __DIR__ . '/includes/header.php';
+?>
+
+<?php if ($action === 'create' || $action === 'edit'): ?>
+<!-- DEDICATED FORM VIEW -->
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+            <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-3">
+                <div>
+                    <h5 class="fw-bold mb-0">
+                        <i class="bi <?= $action === 'edit' ? 'bi-pencil-square text-warning' : 'bi-person-plus text-primary' ?> me-2"></i>
+                        <?= $action === 'edit' ? 'Edit Supplier: ' . htmlspecialchars($edit_supplier['name']) : 'Register Cloth Supplier / Mill' ?>
+                    </h5>
+                    <small class="text-muted">Dedicated form for cloth suppliers and mill payables</small>
+                </div>
+                <a href="suppliers.php" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i> Back to List
+                </a>
+            </div>
+
+            <form method="POST" action="suppliers.php">
+                <input type="hidden" name="form_action" value="<?= $action === 'edit' ? 'edit' : 'add' ?>">
+                <?php if ($action === 'edit'): ?>
+                    <input type="hidden" name="id" value="<?= $edit_supplier['id'] ?>">
+                <?php endif; ?>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-bold">CONTACT PERSON / REPRESENTATIVE *</label>
+                        <input type="text" name="name" class="form-control form-control-lg fw-bold" required 
+                               placeholder="e.g. Haji Abdul Rasheed" 
+                               value="<?= htmlspecialchars($edit_supplier['name'] ?? '') ?>" autofocus>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-bold">COMPANY / TEXTILE MILL NAME</label>
+                        <input type="text" name="company_name" class="form-control form-control-lg" 
+                               placeholder="e.g. Sitara Textile Mills Faisalabad" 
+                               value="<?= htmlspecialchars($edit_supplier['company_name'] ?? '') ?>">
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-bold">PHONE NUMBER *</label>
+                        <input type="text" name="phone" class="form-control" required 
+                               placeholder="0300-1234567" 
+                               value="<?= htmlspecialchars($edit_supplier['phone'] ?? '') ?>">
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-bold">EMAIL ADDRESS</label>
+                        <input type="email" name="email" class="form-control" 
+                               placeholder="supplier@textile.com" 
+                               value="<?= htmlspecialchars($edit_supplier['email'] ?? '') ?>">
+                    </div>
+                </div>
+
+                <?php if ($action === 'create'): ?>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">OPENING BALANCE PAYABLE (RS.)</label>
+                    <input type="number" step="0.01" name="opening_balance" class="form-control" value="0">
+                    <small class="text-muted">Payable dues owed to supplier prior to system start.</small>
+                </div>
+                <?php else: ?>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">STATUS</label>
+                    <select name="status" class="form-select">
+                        <option value="active" <?= ($edit_supplier['status'] ?? '') === 'active' ? 'selected' : '' ?>>Active</option>
+                        <option value="inactive" <?= ($edit_supplier['status'] ?? '') === 'inactive' ? 'selected' : '' ?>>Inactive</option>
+                    </select>
+                </div>
+                <?php endif; ?>
+
+                <div class="mb-4">
+                    <label class="form-label small fw-bold">MILL / WAREHOUSE / SHOP ADDRESS</label>
+                    <textarea name="address" class="form-control" rows="3" 
+                              placeholder="e.g. Circular Road, Cloth Market, Faisalabad"><?= htmlspecialchars($edit_supplier['address'] ?? '') ?></textarea>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                    <a href="suppliers.php" class="btn btn-light">Cancel</a>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">
+                        <i class="bi bi-check2-circle me-1"></i> <?= $action === 'edit' ? 'Update Supplier' : 'Save Supplier' ?>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?php else: ?>
+<!-- LIST VIEW -->
+<?php
 $suppliers = $pdo->query("SELECT s.*, 
                                  COUNT(p.id) AS total_purchases,
                                  COALESCE(SUM(p.total_amount), 0) AS total_purchased_val
@@ -66,9 +174,9 @@ $suppliers = $pdo->query("SELECT s.*,
             <h5 class="fw-bold mb-0">Suppliers & Fabric Mills</h5>
             <small class="text-muted">Manage cloth suppliers, wholesale vendors, and payable Khata balances</small>
         </div>
-        <button class="btn btn-primary btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#addSupplierModal">
+        <a href="suppliers.php?action=create" class="btn btn-primary btn-sm px-3 shadow-sm">
             <i class="bi bi-person-plus me-1"></i> Add New Supplier
-        </button>
+        </a>
     </div>
 </div>
 
@@ -96,7 +204,7 @@ $suppliers = $pdo->query("SELECT s.*,
                             <td><strong class="text-dark"><?= htmlspecialchars($s['name']) ?></strong></td>
                             <td><?= htmlspecialchars($s['company_name'] ?: '-') ?></td>
                             <td>
-                                <div><i class="bi bi-telephone text-muted"></i> <?= htmlspecialchars($s['phone']) ?></div>
+                                <div><i class="bi bi-telephone text-muted me-1"></i><?= htmlspecialchars($s['phone']) ?></div>
                                 <?php if ($s['email']): ?><small class="text-muted"><?= htmlspecialchars($s['email']) ?></small><?php endif; ?>
                             </td>
                             <td><small class="text-muted"><?= htmlspecialchars($s['address'] ?: '-') ?></small></td>
@@ -117,9 +225,9 @@ $suppliers = $pdo->query("SELECT s.*,
                                     <a href="supplier_ledger.php?supplier_id=<?= $s['id'] ?>" class="btn btn-outline-primary" title="Supplier Statement / Khata">
                                         <i class="bi bi-journal-text"></i> Khata
                                     </a>
-                                    <button class="btn btn-outline-secondary" onclick='editSupplier(<?= json_encode($s) ?>)' title="Edit Details">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
+                                    <a href="suppliers.php?action=edit&id=<?= $s['id'] ?>" class="btn btn-outline-secondary" title="Edit Supplier Form">
+                                        <i class="bi bi-pencil"></i> Edit
+                                    </a>
                                 </div>
                             </td>
                         </tr>
@@ -129,117 +237,6 @@ $suppliers = $pdo->query("SELECT s.*,
         </table>
     </div>
 </div>
-
-<!-- Modal Add Supplier -->
-<div class="modal fade" id="addSupplierModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title fw-bold">Add Cloth Supplier</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form method="POST" action="suppliers.php">
-                <input type="hidden" name="action" value="add_supplier">
-                <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">SUPPLIER CONTACT NAME *</label>
-                        <input type="text" name="name" class="form-control" required placeholder="e.g. Haji Farooq Ahmed">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">COMPANY / MILL NAME</label>
-                        <input type="text" name="company_name" class="form-control" placeholder="e.g. Farooq Textile Mills Faisalabad">
-                    </div>
-                    <div class="row g-2 mb-3">
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">PHONE NUMBER *</label>
-                            <input type="text" name="phone" class="form-control" required placeholder="0300-1234567">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">EMAIL</label>
-                            <input type="email" name="email" class="form-control" placeholder="supplier@email.com">
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">OPENING BALANCE (RS.)</label>
-                        <input type="number" name="opening_balance" class="form-control" value="0">
-                        <small class="text-muted">Enter any outstanding payable balance owed before today</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">MARKET / SHOP ADDRESS</label>
-                        <textarea name="address" class="form-control" rows="2" placeholder="e.g. Azam Cloth Market, Lahore"></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Supplier</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Modal Edit Supplier -->
-<div class="modal fade" id="editSupplierModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title fw-bold">Edit Supplier Details</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form method="POST" action="suppliers.php">
-                <input type="hidden" name="action" value="edit_supplier">
-                <input type="hidden" name="id" id="editSupId">
-                <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">NAME *</label>
-                        <input type="text" name="name" id="editSupName" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">COMPANY</label>
-                        <input type="text" name="company_name" id="editSupCompany" class="form-control">
-                    </div>
-                    <div class="row g-2 mb-3">
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">PHONE *</label>
-                            <input type="text" name="phone" id="editSupPhone" class="form-control" required>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">STATUS</label>
-                            <select name="status" id="editSupStatus" class="form-select">
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">EMAIL</label>
-                        <input type="email" name="email" id="editSupEmail" class="form-control">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">ADDRESS</label>
-                        <textarea name="address" id="editSupAddress" class="form-control" rows="2"></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Update Supplier</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<script>
-function editSupplier(s) {
-    document.getElementById('editSupId').value = s.id;
-    document.getElementById('editSupName').value = s.name;
-    document.getElementById('editSupCompany').value = s.company_name || '';
-    document.getElementById('editSupPhone').value = s.phone;
-    document.getElementById('editSupEmail').value = s.email || '';
-    document.getElementById('editSupAddress').value = s.address || '';
-    document.getElementById('editSupStatus').value = s.status;
-    new bootstrap.Modal(document.getElementById('editSupplierModal')).show();
-}
-</script>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

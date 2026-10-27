@@ -1,12 +1,15 @@
 <?php
-// users.php - User Accounts, Roles & RBAC Management
+// users.php - User Accounts, Roles & RBAC Dedicated Forms
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/config/auth.php';
 
 require_role('admin');
 
+$action = $_GET['action'] ?? 'list';
+$edit_id = intval($_GET['id'] ?? 0);
+
 // Add User
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_user') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_action']) && $_POST['form_action'] === 'add_user') {
     $username = trim($_POST['username']);
     $full_name = trim($_POST['full_name']);
     $password = $_POST['password'];
@@ -30,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // Edit User
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_user') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_action']) && $_POST['form_action'] === 'edit_user') {
     $id = intval($_POST['id']);
     $full_name = trim($_POST['full_name']);
     $role = $_POST['role'];
@@ -53,9 +56,116 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-$page_title = 'User Accounts & Access Control';
-require_once __DIR__ . '/includes/header.php';
+$edit_user = null;
+if ($action === 'edit' && $edit_id > 0) {
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->execute([$edit_id]);
+    $edit_user = $stmt->fetch();
+    if (!$edit_user) {
+        $_SESSION['flash_error'] = "User #$edit_id not found.";
+        header("Location: users.php");
+        exit;
+    }
+}
 
+$page_title = ($action === 'create') ? 'Create User Account' : (($action === 'edit') ? 'Edit User' : 'User Accounts & Access Control');
+require_once __DIR__ . '/includes/header.php';
+?>
+
+<?php if ($action === 'create' || $action === 'edit'): ?>
+<!-- DEDICATED FORM VIEW -->
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+            <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-3">
+                <div>
+                    <h5 class="fw-bold mb-0">
+                        <i class="bi <?= $action === 'edit' ? 'bi-pencil-square text-warning' : 'bi-person-plus text-primary' ?> me-2"></i>
+                        <?= $action === 'edit' ? 'Edit User: ' . htmlspecialchars($edit_user['full_name']) : 'Add New Staff Account' ?>
+                    </h5>
+                    <small class="text-muted">Dedicated form for user credentials and RBAC permission roles</small>
+                </div>
+                <a href="users.php" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i> Back to Users
+                </a>
+            </div>
+
+            <form method="POST" action="users.php">
+                <input type="hidden" name="form_action" value="<?= $action === 'edit' ? 'edit_user' : 'add_user' ?>">
+                <?php if ($action === 'edit'): ?>
+                    <input type="hidden" name="id" value="<?= $edit_user['id'] ?>">
+                <?php endif; ?>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-bold">FULL NAME *</label>
+                        <input type="text" name="full_name" class="form-control" required 
+                               placeholder="e.g. Muhammad Usman" 
+                               value="<?= htmlspecialchars($edit_user['full_name'] ?? '') ?>" autofocus>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-bold">LOGIN USERNAME *</label>
+                        <input type="text" name="username" class="form-control" required 
+                               placeholder="e.g. usman_cashier" 
+                               value="<?= htmlspecialchars($edit_user['username'] ?? '') ?>" 
+                               <?= $action === 'edit' ? 'readonly' : '' ?>>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-bold">ROLE & ACCESS LEVEL *</label>
+                        <select name="role" class="form-select" required>
+                            <option value="cashier" <?= ($edit_user['role'] ?? '') === 'cashier' ? 'selected' : '' ?>>Cashier (POS & Sales only)</option>
+                            <option value="inventory" <?= ($edit_user['role'] ?? '') === 'inventory' ? 'selected' : '' ?>>Inventory Clerk (Catalog & Stock)</option>
+                            <option value="accountant" <?= ($edit_user['role'] ?? '') === 'accountant' ? 'selected' : '' ?>>Accountant (Khata & Ledgers)</option>
+                            <option value="manager" <?= ($edit_user['role'] ?? '') === 'manager' ? 'selected' : '' ?>>Shop Manager (Operations & Reports)</option>
+                            <option value="admin" <?= ($edit_user['role'] ?? '') === 'admin' ? 'selected' : '' ?>>System Administrator (Full Control)</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-bold">CONTACT PHONE</label>
+                        <input type="text" name="phone" class="form-control" 
+                               placeholder="0300-1234567" 
+                               value="<?= htmlspecialchars($edit_user['phone'] ?? '') ?>">
+                    </div>
+                </div>
+
+                <?php if ($action === 'create'): ?>
+                <div class="mb-4">
+                    <label class="form-label small fw-bold">LOGIN PASSWORD *</label>
+                    <input type="password" name="password" class="form-control" required placeholder="Choose a secure password">
+                </div>
+                <?php else: ?>
+                <div class="row g-3 mb-4">
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-bold">ACCOUNT STATUS</label>
+                        <select name="status" class="form-select">
+                            <option value="active" <?= ($edit_user['status'] ?? '') === 'active' ? 'selected' : '' ?>>Active</option>
+                            <option value="inactive" <?= ($edit_user['status'] ?? '') === 'inactive' ? 'selected' : '' ?>>Inactive</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label small fw-bold">RESET PASSWORD (OPTIONAL)</label>
+                        <input type="password" name="new_password" class="form-control" placeholder="Leave blank to keep current">
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                    <a href="users.php" class="btn btn-light">Cancel</a>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">
+                        <i class="bi bi-check2-circle me-1"></i> <?= $action === 'edit' ? 'Update User' : 'Save User Account' ?>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?php else: ?>
+<!-- LIST VIEW -->
+<?php
 $users = $pdo->query("SELECT * FROM users ORDER BY id ASC")->fetchAll();
 $auditLogs = $pdo->query("SELECT a.*, u.full_name AS user_name, u.username
                          FROM audit_logs a
@@ -70,9 +180,9 @@ $auditLogs = $pdo->query("SELECT a.*, u.full_name AS user_name, u.username
             <h5 class="fw-bold mb-0">Staff Accounts & Role-Based Access</h5>
             <small class="text-muted">Control user credentials, permissions and review system activity logs</small>
         </div>
-        <button class="btn btn-primary btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#addUserModal">
+        <a href="users.php?action=create" class="btn btn-primary btn-sm px-3 shadow-sm">
             <i class="bi bi-person-plus me-1"></i> Add New User
-        </button>
+        </a>
     </div>
 </div>
 
@@ -107,9 +217,9 @@ $auditLogs = $pdo->query("SELECT a.*, u.full_name AS user_name, u.username
                                 <td><?= status_badge($u['status']) ?></td>
                                 <td class="small text-muted"><?= format_date($u['created_at'], false) ?></td>
                                 <td class="text-end">
-                                    <button class="btn btn-sm btn-outline-secondary" onclick='editUser(<?= json_encode($u) ?>)'>
+                                    <a href="users.php?action=edit&id=<?= $u['id'] ?>" class="btn btn-sm btn-outline-secondary">
                                         <i class="bi bi-pencil"></i> Edit
-                                    </button>
+                                    </a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -138,11 +248,11 @@ $auditLogs = $pdo->query("SELECT a.*, u.full_name AS user_name, u.username
                         <?php foreach ($auditLogs as $log): ?>
                             <tr>
                                 <td>
-                                    <strong><?= htmlspecialchars($log['action']) ?></strong> (<?= htmlspecialchars($log['module']) ?>)
-                                    <div class="text-muted" style="font-size: 11px;"><?= htmlspecialchars(substr($log['details'] ?? '', 0, 50)) ?></div>
+                                    <strong><?= htmlspecialchars($log['action']) ?></strong>
+                                    <small class="d-block text-muted"><?= htmlspecialchars($log['details'] ?? '') ?></small>
                                 </td>
                                 <td><?= htmlspecialchars($log['user_name'] ?? 'System') ?></td>
-                                <td class="text-muted" style="white-space: nowrap;"><?= date('d M, h:i A', strtotime($log['created_at'])) ?></td>
+                                <td class="small text-muted"><?= date('d M, h:i A', strtotime($log['created_at'])) ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -151,120 +261,6 @@ $auditLogs = $pdo->query("SELECT a.*, u.full_name AS user_name, u.username
         </div>
     </div>
 </div>
-
-<!-- Modal Add User -->
-<div class="modal fade" id="addUserModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title fw-bold">Create Staff Account</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form method="POST" action="users.php">
-                <input type="hidden" name="action" value="add_user">
-                <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">FULL NAME *</label>
-                        <input type="text" name="full_name" class="form-control" required placeholder="e.g. Asim Raza">
-                    </div>
-                    <div class="row g-2 mb-3">
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">USERNAME *</label>
-                            <input type="text" name="username" class="form-control" required placeholder="e.g. asim">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">PASSWORD *</label>
-                            <input type="password" name="password" class="form-control" required placeholder="••••••••">
-                        </div>
-                    </div>
-                    <div class="row g-2 mb-3">
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">ROLE</label>
-                            <select name="role" class="form-select" required>
-                                <option value="cashier">Cashier (POS only)</option>
-                                <option value="inventory">Inventory Staff</option>
-                                <option value="accountant">Accountant</option>
-                                <option value="manager">Manager</option>
-                                <option value="admin">Administrator (Full Access)</option>
-                            </select>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">PHONE NUMBER</label>
-                            <input type="text" name="phone" class="form-control" placeholder="0300-1122334">
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary fw-bold">Create Account</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Modal Edit User -->
-<div class="modal fade" id="editUserModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title fw-bold">Edit User Account</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form method="POST" action="users.php">
-                <input type="hidden" name="action" value="edit_user">
-                <input type="hidden" name="id" id="editUserId">
-                <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">FULL NAME *</label>
-                        <input type="text" name="full_name" id="editFullName" class="form-control" required>
-                    </div>
-                    <div class="row g-2 mb-3">
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">ROLE</label>
-                            <select name="role" id="editRole" class="form-select">
-                                <option value="cashier">Cashier</option>
-                                <option value="inventory">Inventory Staff</option>
-                                <option value="accountant">Accountant</option>
-                                <option value="manager">Manager</option>
-                                <option value="admin">Administrator</option>
-                            </select>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">STATUS</label>
-                            <select name="status" id="editStatus" class="form-select">
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">PHONE</label>
-                        <input type="text" name="phone" id="editPhone" class="form-control">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">RESET PASSWORD (OPTIONAL)</label>
-                        <input type="password" name="new_password" class="form-control" placeholder="Leave empty to keep existing password">
-                    </div>
-                </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary fw-bold">Save Changes</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<script>
-function editUser(u) {
-    document.getElementById('editUserId').value = u.id;
-    document.getElementById('editFullName').value = u.full_name;
-    document.getElementById('editRole').value = u.role;
-    document.getElementById('editPhone').value = u.phone || '';
-    document.getElementById('editStatus').value = u.status;
-    new bootstrap.Modal(document.getElementById('editUserModal')).show();
-}
-</script>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

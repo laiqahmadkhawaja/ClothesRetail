@@ -1,72 +1,163 @@
 <?php
-// cash_register.php - Cash Drawer Management & Shift Reconciliation
+// cash_register.php - Shift Open/Close & Drawer Reconciliation
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/helpers.php';
 
-require_login();
+require_role('admin', 'manager', 'cashier');
+
 $user = current_user();
-$active_register = get_active_register($pdo, $user['id'] ?? 0);
+$action = $_GET['action'] ?? 'view';
 
-// Open Register Shift
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'open_shift') {
-    $opening_balance = floatval($_POST['opening_balance'] ?? 0);
-    $notes = trim($_POST['notes'] ?? 'Morning Opening Float');
+// 1. Handle Open Shift
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_action']) && $_POST['form_action'] === 'open_shift') {
+    $opening_balance = floatval($_POST['opening_balance']);
+    $notes = trim($_POST['notes'] ?? '');
 
-    if (!$active_register) {
-        $stmt = $pdo->prepare("INSERT INTO cash_registers (cashier_id, opening_time, opening_balance, status, notes) VALUES (?, NOW(), ?, 'open', ?)");
+    $active = get_active_register($pdo, $user['id']);
+    if ($active) {
+        $_SESSION['flash_error'] = "You already have an active shift (#{$active['id']}). Please close it first.";
+    } else {
+        $stmt = $pdo->prepare("INSERT INTO cash_registers (user_id, opening_time, opening_balance, notes, status) VALUES (?, NOW(), ?, ?, 'open')");
         $stmt->execute([$user['id'], $opening_balance, $notes]);
-        $new_reg_id = $pdo->lastInsertId();
+        $new_id = $pdo->lastInsertId();
 
-        log_audit($pdo, 'Open Shift', 'Register', "Opened register shift #$new_reg_id with float Rs. $opening_balance");
-        $_SESSION['flash_success'] = "Cash Register shift opened with opening float of " . format_currency($opening_balance);
+        log_audit($pdo, 'Open Shift', 'POS', "User opened shift #$new_id with Rs. $opening_balance float");
+        $_SESSION['flash_success'] = "Register shift opened successfully with starting cash of " . format_currency($opening_balance);
     }
     header("Location: cash_register.php");
     exit;
 }
 
-// Close Register Shift
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'close_shift') {
+// 2. Handle Close Shift
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_action']) && $_POST['form_action'] === 'close_shift') {
     $reg_id = intval($_POST['register_id']);
-    $closing_cash = floatval($_POST['closing_balance']);
-    $close_notes = trim($_POST['notes'] ?? '');
+    $closing_balance = floatval($_POST['closing_balance']);
+    $notes = trim($_POST['notes'] ?? '');
 
-    $stmtReg = $pdo->prepare("SELECT * FROM cash_registers WHERE id = ? AND cashier_id = ? AND status = 'open'");
-    $stmtReg->execute([$reg_id, $user['id']]);
-    $reg = $stmtReg->fetch();
+    $stmt = $pdo->prepare("SELECT * FROM cash_registers WHERE id = ? AND status = 'open'");
+    $stmt->execute([$reg_id]);
+    $reg = $stmt->fetch();
 
     if ($reg) {
-        $expected = ($reg['opening_balance'] + $reg['total_sales_cash'] + $reg['total_payments_received'])
-                  - ($reg['total_expenses_paid'] + $reg['total_supplier_paid'] + $reg['total_refunds_paid']);
-        $diff = $closing_cash - $expected;
+        $expected_cash = ($reg['opening_balance'] + $reg['total_sales_cash'] + $reg['total_payments_received']) - ($reg['total_expenses_paid'] + $reg['total_supplier_paid'] + $reg['total_refunds_paid']);
+        $diff = $closing_balance - $expected_cash;
 
-        $stmtUpd = $pdo->prepare("UPDATE cash_registers SET closing_time = NOW(), closing_balance = ?, expected_cash = ?, cash_difference = ?, status = 'closed', notes = CONCAT(COALESCE(notes, ''), ' | Closing Note: ', ?) WHERE id = ?");
-        $stmtUpd->execute([$closing_cash, $expected, $diff, $close_notes, $reg_id]);
+        $stmtUpd = $pdo->prepare("UPDATE cash_registers SET closing_time = NOW(), closing_balance = ?, closing_notes = ?, cash_difference = ?, status = 'closed' WHERE id = ?");
+        $stmtUpd->execute([$closing_balance, $notes, $diff, $reg_id]);
 
-        log_audit($pdo, 'Close Shift', 'Register', "Closed shift #$reg_id: Counted Rs. $closing_cash, Expected Rs. $expected, Diff: Rs. $diff");
-        $_SESSION['flash_success'] = "Shift #$reg_id closed successfully! Cash Difference: " . format_currency($diff);
+        log_audit($pdo, 'Close Shift', 'POS', "Shift #$reg_id closed. Expected: Rs. $expected_cash, Counted: Rs. $closing_balance, Diff: Rs. $diff");
+        $_SESSION['flash_success'] = "Register shift #$reg_id closed successfully! Cash Difference: " . format_currency($diff);
     }
     header("Location: cash_register.php");
     exit;
 }
 
-$page_title = 'Cash Register Shifts & Drawer';
+$page_title = ($action === 'open') ? 'Open Register Shift' : (($action === 'close') ? 'Close Register Shift' : 'Cash Drawer & Shifts');
 require_once __DIR__ . '/includes/header.php';
 
-// Fetch historical shifts
-$shifts = $pdo->query("SELECT cr.*, u.full_name AS cashier_name
-                       FROM cash_registers cr
-                       JOIN users u ON cr.cashier_id = u.id
-                       ORDER BY cr.id DESC
-                       LIMIT 20")->fetchAll();
-?>
-
-<!-- Register Active Status Card -->
-<?php if ($active_register): 
+$active_register = get_active_register($pdo, $user['id']);
+$expected_cash = 0;
+if ($active_register) {
     $expected_cash = ($active_register['opening_balance'] + $active_register['total_sales_cash'] + $active_register['total_payments_received'])
                    - ($active_register['total_expenses_paid'] + $active_register['total_supplier_paid'] + $active_register['total_refunds_paid']);
+}
 ?>
-<div class="card border-0 shadow-sm rounded-3 p-4 mb-4 bg-white">
+
+<?php if ($action === 'open'): ?>
+<!-- DEDICATED FORM: OPEN SHIFT -->
+<div class="row justify-content-center">
+    <div class="col-12 col-md-6 col-lg-5">
+        <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+            <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-3">
+                <div>
+                    <h5 class="fw-bold mb-0 text-primary">
+                        <i class="bi bi-unlock-fill me-2"></i> Open Register Shift
+                    </h5>
+                    <small class="text-muted">Dedicated form to begin cashier shift</small>
+                </div>
+                <a href="cash_register.php" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i> Back
+                </a>
+            </div>
+
+            <form method="POST" action="cash_register.php">
+                <input type="hidden" name="form_action" value="open_shift">
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">OPENING CASH FLOAT (RS.) *</label>
+                    <input type="number" step="0.01" name="opening_balance" class="form-control form-control-lg text-end fw-bold" required min="0" value="5000" autofocus>
+                    <small class="text-muted">Enter petty cash / small change placed into drawer</small>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small fw-bold">SHIFT NOTES</label>
+                    <input type="text" name="notes" class="form-control" value="Morning Opening Shift">
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                    <a href="cash_register.php" class="btn btn-light">Cancel</a>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">
+                        <i class="bi bi-check2-circle me-1"></i> Open Register & Begin Sales
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?php elseif ($action === 'close' && $active_register): ?>
+<!-- DEDICATED FORM: CLOSE SHIFT -->
+<div class="row justify-content-center">
+    <div class="col-12 col-md-6 col-lg-5">
+        <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+            <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-3">
+                <div>
+                    <h5 class="fw-bold mb-0 text-danger">
+                        <i class="bi bi-door-closed me-2"></i> Close Register & Count Cash
+                    </h5>
+                    <small class="text-muted">Dedicated reconciliation form for closing shift</small>
+                </div>
+                <a href="cash_register.php" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i> Back
+                </a>
+            </div>
+
+            <form method="POST" action="cash_register.php">
+                <input type="hidden" name="form_action" value="close_shift">
+                <input type="hidden" name="register_id" value="<?= $active_register['id'] ?>">
+
+                <div class="p-3 bg-light rounded text-center mb-3">
+                    <span class="small text-muted d-block">Expected Cash in Drawer:</span>
+                    <h3 class="fw-bolder text-primary mb-0"><?= format_currency($expected_cash) ?></h3>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">ACTUAL PHYSICAL CASH COUNT (RS.) *</label>
+                    <input type="number" step="0.01" name="closing_balance" id="closingCashCount" class="form-control form-control-lg text-end fw-bold" required min="0" value="<?= $expected_cash ?>" autofocus>
+                    <small class="text-muted">Count physical banknotes and coins in drawer</small>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small fw-bold">CLOSING SHIFT NOTES</label>
+                    <textarea name="notes" class="form-control" rows="2" placeholder="e.g. End of day reconciliation..."></textarea>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                    <a href="cash_register.php" class="btn btn-light">Cancel</a>
+                    <button type="submit" class="btn btn-danger px-4 fw-bold">
+                        <i class="bi bi-door-closed me-1"></i> Reconcile & Close Shift
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?php else: ?>
+<!-- MAIN REGISTER OVERVIEW & SHIFT BREAKDOWN -->
+<?php if ($active_register): ?>
+<div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 border-bottom pb-3 mb-4">
         <div>
             <div class="d-flex align-items-center gap-2">
@@ -81,9 +172,9 @@ $shifts = $pdo->query("SELECT cr.*, u.full_name AS cashier_name
             <a href="pos.php" class="btn btn-primary btn-sm px-3 shadow-sm">
                 <i class="bi bi-upc-scan me-1"></i> Go to POS
             </a>
-            <button class="btn btn-danger btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#closeShiftModal">
+            <a href="cash_register.php?action=close" class="btn btn-danger btn-sm px-3 shadow-sm">
                 <i class="bi bi-door-closed me-1"></i> Close Register Shift
-            </button>
+            </a>
         </div>
     </div>
 
@@ -132,7 +223,7 @@ $shifts = $pdo->query("SELECT cr.*, u.full_name AS cashier_name
 </div>
 
 <?php else: ?>
-<!-- No Shift Open Warning & Open Shift Form -->
+<!-- No Shift Open Warning & Open Shift Button -->
 <div class="card border-0 shadow-sm rounded-3 p-4 mb-4 bg-light">
     <div class="row align-items-center">
         <div class="col-12 col-md-7">
@@ -147,15 +238,22 @@ $shifts = $pdo->query("SELECT cr.*, u.full_name AS cashier_name
             </div>
         </div>
         <div class="col-12 col-md-5 mt-3 mt-md-0 text-md-end">
-            <button class="btn btn-primary btn-lg fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#openShiftModal">
+            <a href="cash_register.php?action=open" class="btn btn-primary btn-lg fw-bold shadow-sm">
                 <i class="bi bi-unlock-fill me-1"></i> Open Register Shift
-            </button>
+            </a>
         </div>
     </div>
 </div>
 <?php endif; ?>
 
 <!-- Shift History Table -->
+<?php
+$shifts = $pdo->query("SELECT cr.*, u.full_name AS cashier_name 
+                       FROM cash_registers cr 
+                       JOIN users u ON cr.user_id = u.id 
+                       ORDER BY cr.id DESC 
+                       LIMIT 25")->fetchAll();
+?>
 <div class="card border-0 shadow-sm rounded-3">
     <div class="card-header bg-white border-0 py-3">
         <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-clock-history text-primary me-2"></i> Cash Register Shifts History</h6>
@@ -166,122 +264,43 @@ $shifts = $pdo->query("SELECT cr.*, u.full_name AS cashier_name
                 <tr>
                     <th>Shift #</th>
                     <th>Cashier</th>
-                    <th>Opened At</th>
-                    <th>Closed At</th>
-                    <th>Opening Float</th>
-                    <th>Sales Cash</th>
-                    <th>Expenses Paid</th>
-                    <th>Expected Cash</th>
-                    <th>Physical Count</th>
+                    <th>Opening Time</th>
+                    <th>Closing Time</th>
+                    <th class="text-end">Opening Cash</th>
+                    <th class="text-end">Cash Sales</th>
+                    <th class="text-end">Closing Cash</th>
                     <th>Difference</th>
                     <th>Status</th>
                 </tr>
             </thead>
             <tbody>
-                <?php if (empty($shifts)): ?>
-                    <tr><td colspan="11" class="text-center py-4 text-muted">No shifts logged yet.</td></tr>
-                <?php else: ?>
-                    <?php foreach ($shifts as $s): ?>
-                        <tr>
-                            <td><strong>#<?= $s['id'] ?></strong></td>
-                            <td><?= htmlspecialchars($s['cashier_name']) ?></td>
-                            <td class="small"><?= format_date($s['opening_time']) ?></td>
-                            <td class="small"><?= $s['closing_time'] ? format_date($s['closing_time']) : '<span class="text-success fw-bold">Active</span>' ?></td>
-                            <td><?= format_currency($s['opening_balance']) ?></td>
-                            <td class="text-success fw-bold"><?= format_currency($s['total_sales_cash']) ?></td>
-                            <td class="text-danger"><?= format_currency($s['total_expenses_paid']) ?></td>
-                            <td><strong><?= $s['expected_cash'] !== null ? format_currency($s['expected_cash']) : '-' ?></strong></td>
-                            <td><strong><?= $s['closing_balance'] !== null ? format_currency($s['closing_balance']) : '-' ?></strong></td>
-                            <td>
-                                <?php if ($s['cash_difference'] !== null): ?>
-                                    <?php if ($s['cash_difference'] == 0): ?>
-                                        <span class="badge bg-success">Exact Match</span>
-                                    <?php elseif ($s['cash_difference'] > 0): ?>
-                                        <span class="badge bg-info text-dark">+<?= format_currency($s['cash_difference']) ?> Over</span>
-                                    <?php else: ?>
-                                        <span class="badge bg-danger"><?= format_currency($s['cash_difference']) ?> Short</span>
-                                    <?php endif; ?>
+                <?php foreach ($shifts as $s): ?>
+                    <tr>
+                        <td><strong>#<?= $s['id'] ?></strong></td>
+                        <td><?= htmlspecialchars($s['cashier_name']) ?></td>
+                        <td><?= format_date($s['opening_time']) ?></td>
+                        <td><?= $s['closing_time'] ? format_date($s['closing_time']) : '<span class="text-success fw-bold">Active</span>' ?></td>
+                        <td class="text-end"><?= format_currency($s['opening_balance']) ?></td>
+                        <td class="text-end text-success fw-bold"><?= format_currency($s['total_sales_cash']) ?></td>
+                        <td class="text-end"><?= $s['closing_balance'] !== null ? format_currency($s['closing_balance']) : '-' ?></td>
+                        <td>
+                            <?php if ($s['cash_difference'] !== null): ?>
+                                <?php if ($s['cash_difference'] == 0): ?>
+                                    <span class="badge bg-success">Exact Match</span>
+                                <?php elseif ($s['cash_difference'] > 0): ?>
+                                    <span class="badge bg-info text-dark">+<?= format_currency($s['cash_difference']) ?> Over</span>
                                 <?php else: ?>
-                                    <span class="text-muted">-</span>
+                                    <span class="badge bg-danger"><?= format_currency($s['cash_difference']) ?> Short</span>
                                 <?php endif; ?>
-                            </td>
-                            <td><?= status_badge($s['status']) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="text-muted">-</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?= status_badge($s['status']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
             </tbody>
         </table>
-    </div>
-</div>
-
-<!-- ========================================== -->
-<!-- MODAL: Open Shift -->
-<!-- ========================================== -->
-<div class="modal fade" id="openShiftModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title fw-bold">Open Register Shift</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form method="POST" action="cash_register.php">
-                <input type="hidden" name="action" value="open_shift">
-                <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">OPENING CASH FLOAT (RS.) *</label>
-                        <input type="number" name="opening_balance" class="form-control form-control-lg text-end fw-bold" required min="0" value="5000">
-                        <small class="text-muted">Enter petty cash / small change placed into drawer</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">SHIFT NOTES</label>
-                        <input type="text" name="notes" class="form-control" value="Morning Opening Shift">
-                    </div>
-                </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary fw-bold">Open Register & Begin Sales</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- ========================================== -->
-<!-- MODAL: Close Shift -->
-<!-- ========================================== -->
-<?php if ($active_register): ?>
-<div class="modal fade" id="closeShiftModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title fw-bold">Close Register & Count Cash</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form method="POST" action="cash_register.php">
-                <input type="hidden" name="action" value="close_shift">
-                <input type="hidden" name="register_id" value="<?= $active_register['id'] ?>">
-                <div class="modal-body p-4">
-                    <div class="p-3 bg-light rounded text-center mb-3">
-                        <span class="small text-muted d-block">Expected Cash in Drawer:</span>
-                        <h3 class="fw-bolder text-primary mb-0"><?= format_currency($expected_cash) ?></h3>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">ACTUAL PHYSICAL CASH COUNT (RS.) *</label>
-                        <input type="number" name="closing_balance" id="closingCashCount" class="form-control form-control-lg text-end fw-bold" required min="0" value="<?= $expected_cash ?>">
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">CLOSING SHIFT NOTES</label>
-                        <textarea name="notes" class="form-control" rows="2" placeholder="e.g. End of day reconciliation..."></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger fw-bold">Reconcile & Close Shift</button>
-                </div>
-            </form>
-        </div>
     </div>
 </div>
 <?php endif; ?>

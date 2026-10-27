@@ -1,5 +1,5 @@
 <?php
-// ajax/pos_search.php - Fast Product & Barcode Search for POS
+// ajax/pos_search.php - Fast Product & Barcode Search for POS (Garments & Fabric Support)
 header('Content-Type: application/json');
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/auth.php';
@@ -13,13 +13,17 @@ $query = trim($_GET['q'] ?? '');
 $category_id = intval($_GET['category_id'] ?? 0);
 
 if (empty($query) && $category_id <= 0) {
-    // Return top 20 active products by default for POS grid
+    // Return top 24 active products by default for POS grid
     $sql = "SELECT p.id, p.product_code, p.name, p.rack_location, p.season,
+                   p.item_type, p.unit_type, p.meters_per_suit, p.thaan_length,
+                   p.selling_price AS default_selling_price, p.wholesale_price AS default_wholesale_price,
                    c.name AS category_name, b.name AS brand_name,
                    COUNT(pv.id) AS total_variants,
                    COALESCE(SUM(pv.stock_quantity), 0) AS total_stock,
                    MIN(pv.selling_price) AS min_price,
-                   MAX(pv.selling_price) AS max_price
+                   MAX(pv.selling_price) AS max_price,
+                   MIN(pv.wholesale_price) AS min_wholesale_price,
+                   MAX(pv.wholesale_price) AS max_wholesale_price
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
             LEFT JOIN brands b ON p.brand_id = b.id
@@ -39,6 +43,7 @@ if (empty($query) && $category_id <= 0) {
 if (!empty($query)) {
     // A. Check variant barcode & SKU
     $stmt = $pdo->prepare("SELECT pv.*, p.name AS product_name, p.product_code,
+                                  p.item_type, p.unit_type, p.meters_per_suit, p.thaan_length,
                                   s.name AS size_name, c.name AS color_name, c.hex_code AS color_hex
                            FROM product_variants pv
                            JOIN products p ON pv.product_id = p.id
@@ -64,6 +69,7 @@ if (!empty($query)) {
 
     if ($masterProd) {
         $stmtVars = $pdo->prepare("SELECT pv.*, p.name AS product_name, p.product_code,
+                                          p.item_type, p.unit_type, p.meters_per_suit, p.thaan_length,
                                           s.name AS size_name, c.name AS color_name, c.hex_code AS color_hex
                                    FROM product_variants pv
                                    JOIN products p ON pv.product_id = p.id
@@ -82,11 +88,15 @@ if (!empty($query)) {
             exit;
         } elseif (count($prodVariants) > 1) {
             $stmtProdDetail = $pdo->prepare("SELECT p.id, p.product_code, p.name, p.rack_location, p.season,
+                                                    p.item_type, p.unit_type, p.meters_per_suit, p.thaan_length,
+                                                    p.selling_price AS default_selling_price, p.wholesale_price AS default_wholesale_price,
                                                     c.name AS category_name, b.name AS brand_name,
                                                     COUNT(pv.id) AS total_variants,
                                                     COALESCE(SUM(pv.stock_quantity), 0) AS total_stock,
                                                     MIN(pv.selling_price) AS min_price,
-                                                    MAX(pv.selling_price) AS max_price
+                                                    MAX(pv.selling_price) AS max_price,
+                                                    MIN(pv.wholesale_price) AS min_wholesale_price,
+                                                    MAX(pv.wholesale_price) AS max_wholesale_price
                                              FROM products p
                                              LEFT JOIN categories c ON p.category_id = c.id
                                              LEFT JOIN brands b ON p.brand_id = b.id
@@ -122,11 +132,15 @@ if ($category_id > 0) {
 $where_clause = implode(' AND ', $where);
 
 $sql = "SELECT p.id, p.product_code, p.name, p.rack_location, p.season,
+               p.item_type, p.unit_type, p.meters_per_suit, p.thaan_length,
+               p.selling_price AS default_selling_price, p.wholesale_price AS default_wholesale_price,
                c.name AS category_name, b.name AS brand_name,
                COUNT(pv.id) AS total_variants,
                COALESCE(SUM(pv.stock_quantity), 0) AS total_stock,
                MIN(pv.selling_price) AS min_price,
-               MAX(pv.selling_price) AS max_price
+               MAX(pv.selling_price) AS max_price,
+               MIN(pv.wholesale_price) AS min_wholesale_price,
+               MAX(pv.wholesale_price) AS max_wholesale_price
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN brands b ON p.brand_id = b.id

@@ -1,5 +1,5 @@
 <?php
-// ajax/pos_checkout.php - Process POS Sale with Transaction Safety
+// ajax/pos_checkout.php - Process POS Sale with Generic Garments & Fabric Support (Wholesale & Retail Tiers)
 header('Content-Type: application/json');
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/auth.php';
@@ -26,6 +26,7 @@ $payment_method = $data['payment_method'] ?? 'cash';
 $split_payments = $data['split_payments'] ?? [];
 $paid_amount = floatval($data['paid_amount'] ?? 0);
 $notes = trim($data['notes'] ?? '');
+$pricing_tier = in_array($data['pricing_tier'] ?? '', ['retail', 'wholesale']) ? $data['pricing_tier'] : 'retail';
 
 $active_register = get_active_register($pdo, $user['id']);
 $register_id = $active_register ? $active_register['id'] : null;
@@ -38,14 +39,14 @@ try {
     $item_discount_total = 0;
     $validated_items = [];
 
-    $stmtVar = $pdo->prepare("SELECT pv.*, p.name AS product_name 
+    $stmtVar = $pdo->prepare("SELECT pv.*, p.name AS product_name, p.item_type, p.unit_type AS prod_unit_type, p.meters_per_suit 
                              FROM product_variants pv 
                              JOIN products p ON pv.product_id = p.id 
                              WHERE pv.id = ? FOR UPDATE");
 
     foreach ($items as $item) {
         $variant_id = intval($item['variant_id']);
-        $qty = intval($item['qty']);
+        $qty = floatval($item['qty']);
         if ($qty <= 0) continue;
 
         $stmtVar->execute([$variant_id]);
@@ -55,11 +56,22 @@ try {
             throw new Exception("Product variant #$variant_id no longer exists.");
         }
 
-        if ($variant['stock_quantity'] < $qty) {
-            throw new Exception("Insufficient stock for {$variant['product_name']} (SKU: {$variant['sku']}). In stock: {$variant['stock_quantity']}, requested: $qty.");
+        $unit_type = trim($item['unit_type'] ?? ($variant['prod_unit_type'] ?: 'piece'));
+        $item_tier = in_array($item['pricing_tier'] ?? '', ['retail', 'wholesale']) ? $item['pricing_tier'] : $pricing_tier;
+
+        // Calculate actual stock deduction
+        $deduct_qty = $qty;
+        if ($unit_type === 'suit' && floatval($variant['meters_per_suit']) > 0) {
+            $deduct_qty = $qty * floatval($variant['meters_per_suit']);
         }
 
-        $unit_price = floatval($item['unit_price'] ?? $variant['selling_price']);
+        if ($variant['stock_quantity'] < $deduct_qty) {
+            $unitLabel = ($variant['item_type'] === 'fabric') ? ($variant['prod_unit_type'] ?: 'm') : 'units';
+            throw new Exception("Insufficient stock for {$variant['product_name']} ({$variant['sku']}). In stock: {$variant['stock_quantity']} $unitLabel, requested deduction: $deduct_qty $unitLabel.");
+        }
+
+        $default_price = ($item_tier === 'wholesale' && floatval($variant['wholesale_price']) > 0) ? floatval($variant['wholesale_price']) : floatval($variant['selling_price']);
+        $unit_price = floatval($item['unit_price'] ?? $default_price);
         $cost_price = floatval($variant['purchase_price']);
         $item_disc = floatval($item['discount'] ?? 0);
         $line_total = ($unit_price * $qty) - $item_disc;
@@ -68,17 +80,20 @@ try {
         $item_discount_total += $item_disc;
 
         $validated_items[] = [
-            'variant'    => $variant,
-            'qty'        => $qty,
-            'unit_price' => $unit_price,
-            'cost_price' => $cost_price,
-            'discount'   => $item_disc,
-            'line_total' => $line_total
+            'variant'      => $variant,
+            'qty'          => $qty,
+            'deduct_qty'   => $deduct_qty,
+            'unit_type'    => $unit_type,
+            'pricing_tier' => $item_tier,
+            'unit_price'   => $unit_price,
+            'cost_price'   => $cost_price,
+            'discount'     => $item_disc,
+            'line_total'   => $line_total
         ];
     }
 
     if (empty($validated_items)) {
-        throw new Exception("No valid items to checkout.");
+        throw new Exception("No valid items in the cart to checkout.");
     }
 
     // 2. Compute final financial figures
@@ -109,32 +124,33 @@ try {
 
     // 4. Insert into sales table
     $stmtSale = $pdo->prepare("INSERT INTO sales 
-        (invoice_number, customer_id, sale_date, subtotal, item_discount_total, bill_discount, tax_amount, net_total, paid_amount, change_returned, balance_due, payment_status, payment_method, sale_status, cashier_id, register_id, notes)
-        VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)");
+        (invoice_number, customer_id, sale_date, subtotal, item_discount_total, bill_discount, tax_amount, net_total, paid_amount, change_returned, balance_due, payment_status, payment_method, sale_status, cashier_id, register_id, notes, pricing_tier)
+        VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?)");
     
     $stmtSale->execute([
         $invNumber, $customer_id, $subtotal, $item_discount_total, $bill_discount,
         $tax_amount, $net_total, $paid_amount, $change_returned, $balance_due,
-        $payment_status, $payment_method, $user['id'], $register_id, $notes
+        $payment_status, $payment_method, $user['id'], $register_id, $notes, $pricing_tier
     ]);
     $sale_id = $pdo->lastInsertId();
 
     // 5. Insert sale items, decrement variant stock, insert stock movement
-    $stmtItem = $pdo->prepare("INSERT INTO sale_items (sale_id, product_id, variant_id, quantity, unit_price, cost_price, discount, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmtItem = $pdo->prepare("INSERT INTO sale_items (sale_id, product_id, variant_id, quantity, unit_type, pricing_tier, unit_price, cost_price, discount, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $stmtStockUpdate = $pdo->prepare("UPDATE product_variants SET stock_quantity = stock_quantity - ? WHERE id = ?");
     $stmtMove = $pdo->prepare("INSERT INTO stock_movements (product_id, variant_id, movement_date, movement_type, reference_no, qty_in, qty_out, unit_cost, notes, created_by) VALUES (?, ?, NOW(), 'sale', ?, 0, ?, ?, ?, ?)");
 
     foreach ($validated_items as $v) {
         $stmtItem->execute([
             $sale_id, $v['variant']['product_id'], $v['variant']['id'],
-            $v['qty'], $v['unit_price'], $v['cost_price'], $v['discount'], $v['line_total']
+            $v['qty'], $v['unit_type'], $v['pricing_tier'],
+            $v['unit_price'], $v['cost_price'], $v['discount'], $v['line_total']
         ]);
 
-        $stmtStockUpdate->execute([$v['qty'], $v['variant']['id']]);
+        $stmtStockUpdate->execute([$v['deduct_qty'], $v['variant']['id']]);
 
         $stmtMove->execute([
             $v['variant']['product_id'], $v['variant']['id'], $invNumber,
-            $v['qty'], $v['cost_price'], "POS Sale #$invNumber", $user['id']
+            $v['deduct_qty'], $v['cost_price'], "POS Sale #$invNumber ({$v['qty']} {$v['unit_type']})", $user['id']
         ]);
     }
 
@@ -192,7 +208,7 @@ try {
 
     $pdo->commit();
 
-    log_audit($pdo, 'Sale Checkout', 'POS', "Created invoice #$invNumber, Total: Rs. $net_total");
+    log_audit($pdo, 'Sale Checkout', 'POS', "Created invoice #$invNumber, Tier: $pricing_tier, Total: Rs. $net_total");
 
     echo json_encode([
         'success'        => true,
