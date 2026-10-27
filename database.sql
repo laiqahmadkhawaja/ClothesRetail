@@ -52,6 +52,7 @@ CREATE TABLE `users` (
   `full_name` VARCHAR(100) NOT NULL,
   `role` ENUM('admin', 'manager', 'cashier', 'inventory', 'accountant') NOT NULL DEFAULT 'cashier',
   `phone` VARCHAR(25) NULL,
+  `allowed_pages` TEXT NULL,
   `status` ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -11,6 +11,14 @@ $shop_name = $settings['shop_name'] ?? 'ClothesRetail POS';
 $active_register = get_active_register($pdo, $user['id']);
 
 $current_page = basename($_SERVER['PHP_SELF']);
+
+// Enforce Granular Page-Level Access Control
+if (!can_access_page($current_page, $user)) {
+    $target = get_first_accessible_page($user);
+    $_SESSION['flash_error'] = "Access Restricted: You do not have permission to view '$current_page'. Please contact your administrator.";
+    header("Location: $target");
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -54,73 +62,27 @@ $current_page = basename($_SERVER['PHP_SELF']);
         </div>
 
         <div class="sidebar-nav">
-            <div class="nav-section">Main</div>
-            <a href="index.php" class="nav-link <?= $current_page == 'index.php' ? 'active' : '' ?>">
-                <i class="bi bi-speedometer2"></i> Dashboard
-            </a>
-            <a href="pos.php" class="nav-link <?= $current_page == 'pos.php' ? 'active' : '' ?>">
-                <i class="bi bi-upc-scan text-warning"></i> <strong>POS Checkout</strong>
-            </a>
-
-            <div class="nav-section">Catalog & Variants</div>
-            <a href="products.php" class="nav-link <?= in_array($current_page, ['products.php', 'product_form.php', 'product_create.php', 'product_edit.php']) ? 'active' : '' ?>">
-                <i class="bi bi-tags"></i> Products & Fabrics
-            </a>
-            <a href="product_matrix.php" class="nav-link <?= $current_page == 'product_matrix.php' ? 'active' : '' ?>">
-                <i class="bi bi-grid-3x3-gap"></i> Size & Color Matrix
-            </a>
-            <a href="categories.php" class="nav-link <?= $current_page == 'categories.php' ? 'active' : '' ?>">
-                <i class="bi bi-folder2"></i> Categories
-            </a>
-            <a href="brands.php" class="nav-link <?= $current_page == 'brands.php' ? 'active' : '' ?>">
-                <i class="bi bi-patch-check"></i> Brands
-            </a>
-            <a href="sizes_colors.php" class="nav-link <?= $current_page == 'sizes_colors.php' ? 'active' : '' ?>">
-                <i class="bi bi-palette"></i> Sizes & Colors
-            </a>
-
-            <div class="nav-section">Stock & Purchases</div>
-            <a href="inventory.php" class="nav-link <?= $current_page == 'inventory.php' ? 'active' : '' ?>">
-                <i class="bi bi-box-seam"></i> Stock Inventory
-            </a>
-            <a href="purchases.php" class="nav-link <?= in_array($current_page, ['purchases.php', 'purchase_create.php']) ? 'active' : '' ?>">
-                <i class="bi bi-cart-plus"></i> Supplier Purchases
-            </a>
-            <a href="suppliers.php" class="nav-link <?= in_array($current_page, ['suppliers.php', 'supplier_ledger.php']) ? 'active' : '' ?>">
-                <i class="bi bi-truck"></i> Suppliers & Khata
-            </a>
-
-            <div class="nav-section">Sales & Customers</div>
-            <a href="customers.php" class="nav-link <?= in_array($current_page, ['customers.php', 'customer_ledger.php']) ? 'active' : '' ?>">
-                <i class="bi bi-people"></i> Customers & Khata
-            </a>
-            <a href="returns.php" class="nav-link <?= $current_page == 'returns.php' ? 'active' : '' ?>">
-                <i class="bi bi-arrow-left-right"></i> Returns & Exchanges
-            </a>
-            <a href="barcodes.php" class="nav-link <?= $current_page == 'barcodes.php' ? 'active' : '' ?>">
-                <i class="bi bi-barcode"></i> Barcode Labels
-            </a>
-
-            <div class="nav-section">Finance & Register</div>
-            <a href="expenses.php" class="nav-link <?= $current_page == 'expenses.php' ? 'active' : '' ?>">
-                <i class="bi bi-wallet2"></i> Store Expenses
-            </a>
-            <a href="cash_register.php" class="nav-link <?= $current_page == 'cash_register.php' ? 'active' : '' ?>">
-                <i class="bi bi-cash-stack"></i> Cash Register (Shifts)
-            </a>
-            <a href="reports.php" class="nav-link <?= $current_page == 'reports.php' ? 'active' : '' ?>">
-                <i class="bi bi-bar-chart-line"></i> Financial Reports
-            </a>
-
-            <?php if (has_role('admin', 'manager')): ?>
-            <div class="nav-section">Administration</div>
-            <a href="users.php" class="nav-link <?= $current_page == 'users.php' ? 'active' : '' ?>">
-                <i class="bi bi-person-badge"></i> Users & Roles
-            </a>
-            <a href="settings.php" class="nav-link <?= $current_page == 'settings.php' ? 'active' : '' ?>">
-                <i class="bi bi-gear"></i> Store Settings
-            </a>
-            <?php endif; ?>
+            <?php
+            $system_sections = get_system_pages();
+            foreach ($system_sections as $section_name => $section_pages):
+                $accessible_items = [];
+                foreach ($section_pages as $page_url => $page_info) {
+                    if (can_access_page($page_url, $user)) {
+                        $accessible_items[$page_url] = $page_info;
+                    }
+                }
+                if (empty($accessible_items)) continue;
+            ?>
+                <div class="nav-section"><?= htmlspecialchars($section_name) ?></div>
+                <?php foreach ($accessible_items as $page_url => $page_info): 
+                    $isActive = ($current_page == $page_url || in_array($current_page, $page_info['aliases'] ?? []));
+                ?>
+                    <a href="<?= $page_url ?>" class="nav-link <?= $isActive ? 'active' : '' ?>">
+                        <i class="bi <?= $page_info['icon'] ?> <?= $page_url === 'pos.php' ? 'text-warning' : '' ?>"></i>
+                        <?= $page_url === 'pos.php' ? '<strong>' . htmlspecialchars($page_info['title']) . '</strong>' : htmlspecialchars($page_info['title']) ?>
+                    </a>
+                <?php endforeach; ?>
+            <?php endforeach; ?>
         </div>
 
         <div class="sidebar-footer">
