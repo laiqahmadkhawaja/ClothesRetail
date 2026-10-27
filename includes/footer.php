@@ -38,8 +38,8 @@
     </button>
 </nav>
 
-<!-- Global Toast Container -->
-<div class="toast-container position-fixed bottom-0 end-0 p-3 no-print" style="z-index: 1080; margin-bottom: 60px;">
+<!-- Global Toast Container (Top-Right so it never blocks bottom buttons) -->
+<div class="toast-container position-fixed top-0 end-0 p-3 no-print" style="z-index: 1090; margin-top: 55px;">
     <div id="liveToast" class="toast align-items-center text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
         <div class="d-flex">
             <div class="toast-body" id="toastMessage">

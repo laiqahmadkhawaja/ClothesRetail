@@ -28,8 +28,9 @@ if (!$product) {
     exit;
 }
 
-$stmtV = $pdo->prepare("SELECT pv.*, s.name AS size_name, s.size_group, c.name AS color_name, c.hex_code AS color_hex
+$stmtV = $pdo->prepare("SELECT pv.*, p.name AS product_name, p.product_code, s.name AS size_name, s.size_group, c.name AS color_name, c.hex_code AS color_hex
                         FROM product_variants pv
+                        JOIN products p ON pv.product_id = p.id
                         JOIN sizes s ON pv.size_id = s.id
                         JOIN colors c ON pv.color_id = c.id
                         WHERE pv.product_id = ? AND pv.status = 'active'

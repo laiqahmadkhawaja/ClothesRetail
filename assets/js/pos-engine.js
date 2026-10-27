@@ -231,6 +231,12 @@ document.addEventListener("DOMContentLoaded", function() {
                 closeBarcodeScanner();
                 return;
             }
+            const varPanel = document.getElementById("posVariantPickerPanel");
+            if (varPanel && varPanel.style.display !== "none" && !varPanel.classList.contains("d-none")) {
+                e.preventDefault();
+                closeVariantPickerPanel();
+                return;
+            }
             const checkoutView = document.getElementById("posCheckoutView");
             if (checkoutView && checkoutView.style.display !== "none" && !checkoutView.classList.contains("d-none")) {
                 e.preventDefault();
@@ -337,7 +343,7 @@ function loadProducts(query = '', category_id = 0) {
                         <div class="mt-2 pt-2 border-top w-100">
                             <div class="d-flex justify-content-between align-items-center">
                                 <strong class="${isWholesaleActive && minWholesale > 0 ? 'text-success' : 'text-primary'} fs-6">${displayedRate}</strong>
-                                ${isWholesaleActive && minWholesale > 0 ? `<span class="badge bg-success-subtle text-success border border-success" style="font-size: 0.65rem;">Wholesale</span>` : (isFabric ? `<span class="badge" style="font-size: 0.65rem; background-color: #f3e8ff; color: #6b21a8; font-weight: 600;">Thaan</span>` : '<span class="badge bg-light text-muted border" style="font-size: 0.65rem;">Garment</span>')}
+                                ${isFabric ? `<span class="badge" style="font-size: 0.65rem; background-color: #f3e8ff; color: #6b21a8; font-weight: 600;">Thaan</span>` : '<span class="badge bg-light text-muted border" style="font-size: 0.65rem;">Garment</span>'}
                             </div>
                             ${secondaryRate}
                         </div>
@@ -352,6 +358,27 @@ function loadProducts(query = '', category_id = 0) {
         });
 }
 
+// Dedicated Inline Variant & Color Picker View Controls
+function openVariantPickerPanel() {
+    const mainView = document.getElementById("posCatalogueMainView");
+    const panel = document.getElementById("posVariantPickerPanel");
+    if (mainView && panel) {
+        mainView.style.display = "none";
+        panel.style.display = "block";
+    }
+}
+window.openVariantPickerPanel = openVariantPickerPanel;
+
+function closeVariantPickerPanel() {
+    const mainView = document.getElementById("posCatalogueMainView");
+    const panel = document.getElementById("posVariantPickerPanel");
+    if (mainView && panel) {
+        panel.style.display = "none";
+        mainView.style.display = "block";
+    }
+}
+window.closeVariantPickerPanel = closeVariantPickerPanel;
+
 // Handle Barcode Direct Scan
 function handleBarcodeEnter(query) {
     fetch(`ajax/pos_search.php?q=${encodeURIComponent(query)}`)
@@ -361,7 +388,8 @@ function handleBarcodeEnter(query) {
                 playBeep(980, 0.1);
                 addVariantToCart(data.variant, 1);
                 document.getElementById("posSearchInput").value = "";
-                showToast(`Added: ${data.variant.product_name} (${data.variant.size_name}/${data.variant.color_name})`, "success");
+                const prodName = data.variant.product_name || 'Garment';
+                showToast(`Added: ${prodName} (${data.variant.size_name}/${data.variant.color_name})`, "success");
             } else if (data.products && data.products.length === 1) {
                 selectProductForVariants(data.products[0].id);
             } else {
@@ -371,13 +399,13 @@ function handleBarcodeEnter(query) {
         .catch(err => console.error(err));
 }
 
-// Select Product and Open Size & Color Variant Modal
+// Select Product and Open Dedicated Size & Color Variant Panel (Replaced Modal)
 function selectProductForVariants(productId) {
     fetch(`ajax/get_product_variants.php?product_id=${productId}`)
         .then(res => res.json())
         .then(data => {
             if (data.error) {
-                alert(data.error);
+                showToast(data.error, "danger");
                 return;
             }
 
@@ -385,18 +413,23 @@ function selectProductForVariants(productId) {
             const isFabric = (p.item_type === 'fabric');
             const suitMeters = parseFloat(p.meters_per_suit) || 4.5;
 
-            document.getElementById("variantModalTitle").innerHTML = `
-                <i class="bi ${isFabric ? 'bi-scissors' : 'bi-tag-fill'} me-2"></i> ${p.name}
-                <span class="badge bg-white text-dark ms-2 fw-normal small">${p.product_code}</span>
-                ${isFabric ? `<span class="badge text-white ms-1" style="background-color: #7c3aed;">Fabric / Thaan</span>` : ''}
-                <span class="badge ${currentPricingTier === 'wholesale' ? 'bg-success' : 'bg-primary'} text-white ms-1">${currentPricingTier === 'wholesale' ? '📦 Wholesale Rates' : '🛒 Retail Rates'}</span>
-            `;
+            const headerEl = document.getElementById("variantPanelHeaderTitle");
+            if (headerEl) {
+                headerEl.innerHTML = `
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <span class="fw-bold text-dark fs-5"><i class="bi ${isFabric ? 'bi-scissors' : 'bi-tag-fill'} text-primary me-1"></i>${p.name}</span>
+                        <span class="badge bg-light text-dark border fw-normal">${p.product_code}</span>
+                        ${isFabric ? `<span class="badge" style="background-color: #f3e8ff; color: #6b21a8; font-weight: 600;">Thaan</span>` : '<span class="badge bg-light text-muted border">Garment</span>'}
+                        <span class="badge ${currentPricingTier === 'wholesale' ? 'bg-success' : 'bg-primary'} text-white">${currentPricingTier === 'wholesale' ? '📦 Wholesale Rates' : '🛒 Retail Rates'}</span>
+                    </div>
+                `;
+            }
 
             const container = document.getElementById("variantGridContainer");
             container.innerHTML = "";
 
             if (!data.variants || data.variants.length === 0) {
-                container.innerHTML = '<div class="col-12 text-center text-muted py-3">No variants configured for this product. Use Size & Color Matrix to configure variants.</div>';
+                container.innerHTML = '<div class="col-12 text-center text-muted py-5">No sizes or colors configured for this product. Use Size & Color Matrix to configure variants.</div>';
             } else {
                 data.variants.forEach(v => {
                     const stock = parseFloat(v.stock_quantity) || 0;
@@ -410,21 +443,21 @@ function selectProductForVariants(productId) {
                     const col = document.createElement("div");
                     col.className = "col-12 col-sm-6 col-md-4";
                     col.innerHTML = `
-                        <div class="card p-2 border ${isOut ? 'bg-light text-muted opacity-50' : 'border-primary-subtle shadow-sm'} h-100" style="cursor: ${isOut ? 'not-allowed' : 'pointer'}; touch-action: manipulation;" onclick='${isOut ? '' : `chooseVariantWithUnit(${JSON.stringify(v)}, ${JSON.stringify(p)}, "${isFabric ? 'meter' : 'piece'}")`}'>
-                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                <div>
+                        <div class="card p-3 border ${isOut ? 'bg-light text-muted opacity-50' : 'border-primary-subtle shadow-sm'} h-100" style="cursor: ${isOut ? 'not-allowed' : 'pointer'}; touch-action: manipulation;" onclick='${isOut ? '' : `chooseVariantWithUnit(${JSON.stringify(v)}, ${JSON.stringify(p)}, "${isFabric ? 'meter' : 'piece'}")`}'>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="d-flex align-items-center gap-1">
                                     <span class="size-badge me-1">${v.size_name}</span>
                                     <span class="color-dot" style="background-color: ${v.color_hex};"></span>
-                                    <span class="small fw-semibold">${v.color_name}</span>
+                                    <span class="small fw-bold">${v.color_name}</span>
                                 </div>
                                 <span class="badge ${stock > 3 ? 'bg-success' : (stock > 0 ? 'bg-warning text-dark' : 'bg-danger')}">
                                     ${parseFloat(stock.toFixed(2))} ${isFabric ? (p.unit_type || 'm') : 'left'}
                                 </span>
                             </div>
-                            <div class="mt-2 pt-1 border-top">
+                            <div class="mt-2 pt-2 border-top">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <span class="small text-muted">SKU: ${v.sku}</span>
-                                    <strong class="${isWholesaleActive && wholesalePrice > 0 ? 'text-success' : 'text-primary'}">Rs. ${activePrice.toLocaleString()} <small class="text-muted">/${isFabric ? (p.unit_type || 'm') : 'pc'}</small></strong>
+                                    <strong class="${isWholesaleActive && wholesalePrice > 0 ? 'text-success' : 'text-primary'} fs-6">Rs. ${activePrice.toLocaleString()} <small class="text-muted">/${isFabric ? (p.unit_type || 'm') : 'pc'}</small></strong>
                                 </div>
                                 ${isWholesaleActive ? `<div class="small text-muted text-end">Retail: Rs. ${sellPrice.toLocaleString()}</div>` : (wholesalePrice > 0 ? `<div class="small text-success text-end">W-Sale: Rs. ${wholesalePrice.toLocaleString()}</div>` : '')}
                             </div>
@@ -444,21 +477,18 @@ function selectProductForVariants(productId) {
                 });
             }
 
-            const modal = new bootstrap.Modal(document.getElementById("variantSelectModal"));
-            modal.show();
+            openVariantPickerPanel();
         })
-        .catch(err => console.error(err));
+        .catch(err => console.error("Error fetching product variants:", err));
 }
 
-// When a variant is picked in the modal with specific unit
+// When a variant is picked in the dedicated panel with specific unit
 function chooseVariantWithUnit(variant, product, unit = null) {
-    const modalEl = document.getElementById("variantSelectModal");
-    const instance = bootstrap.Modal.getInstance(modalEl);
-    if (instance) instance.hide();
-
     playBeep(920, 0.08);
     addVariantToCart(variant, 1, unit, product);
-    showToast(`Added: ${variant.size_name} / ${variant.color_name} (${unit || 'unit'})`, "success");
+    const prodName = variant.product_name || (product && product.name) || 'Garment';
+    showToast(`Added: ${prodName} (${variant.size_name || ''} / ${variant.color_name || ''}) [${unit || 'unit'}]`, "success");
+    closeVariantPickerPanel();
 }
 
 function chooseVariant(variant) {
@@ -483,6 +513,8 @@ function addVariantToCart(variant, qty = 1, unit = null, prodMeta = null) {
     const availableStock = parseFloat(variant.stock_quantity) || 0;
     const existing = cart.find(item => item.variant_id === variant.id && item.unit_type === unitType && item.pricing_tier === currentPricingTier);
 
+    const prodName = variant.product_name || (prodMeta && prodMeta.name) || variant.name || 'Garment';
+
     if (existing) {
         existing.qty += qty;
         existing.total_price = (existing.qty * existing.unit_price) - existing.discount;
@@ -490,7 +522,7 @@ function addVariantToCart(variant, qty = 1, unit = null, prodMeta = null) {
         cart.push({
             variant_id: variant.id,
             product_id: variant.product_id,
-            product_name: variant.product_name,
+            product_name: prodName,
             size_name: variant.size_name,
             color_name: variant.color_name,
             color_hex: variant.color_hex,

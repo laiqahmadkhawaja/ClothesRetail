@@ -140,7 +140,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <button class="btn btn-sm btn-outline-secondary d-lg-none p-1 px-2" id="sidebarToggle" aria-label="Toggle Navigation">
                         <i class="bi bi-list fs-5"></i>
                     </button>
-                    <h5 class="mb-0 fw-bold text-dark text-truncate" style="max-width: 170px;"><?= htmlspecialchars($page_title ?? 'Overview') ?></h5>
+                    <h5 class="mb-0 fw-bold text-dark text-nowrap"><?= htmlspecialchars($page_title ?? 'Overview') ?></h5>
                 </div>
 
                 <div class="d-flex align-items-center gap-2 ms-auto">

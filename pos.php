@@ -33,59 +33,85 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
 <div class="row g-3">
     <!-- LEFT: Product Search, Category Filter & Product Grid -->
     <div class="col-12 col-lg-7 col-xl-8" id="posProductsColumn">
-        <div class="card border-0 shadow-sm rounded-3 p-2 p-md-3 mb-3">
-            <div class="row g-2 align-items-center">
-                <!-- Barcode & Product Search Input with Camera Scanner Button -->
-                <div class="col-12 col-md-8">
-                    <div class="input-group">
-                        <span class="input-group-text bg-white border-end-0 text-primary">
-                            <i class="bi bi-upc-scan fs-5"></i>
-                        </span>
-                        <input type="text" id="posSearchInput" class="form-control border-start-0 ps-0 form-control-lg" 
-                               placeholder="Scan Barcode (Enter) or Search Garment, Code, Brand... [F2]" autofocus autocomplete="off">
-                        <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" title="Clear Search">
-                            <i class="bi bi-x-lg"></i>
+        <!-- VIEW 1: Main Product Catalogue (Search, Categories & Grid) -->
+        <div id="posCatalogueMainView">
+            <div class="card border-0 shadow-sm rounded-3 p-2 p-md-3 mb-3">
+                <div class="row g-2 align-items-center">
+                    <!-- Barcode & Product Search Input with Camera Scanner Button -->
+                    <div class="col-12 col-md-8">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0 text-primary">
+                                <i class="bi bi-upc-scan fs-5"></i>
+                            </span>
+                            <input type="text" id="posSearchInput" class="form-control border-start-0 ps-0 form-control-lg" 
+                                   placeholder="Scan Barcode (Enter) or Search Garment, Code, Brand... [F2]" autofocus autocomplete="off">
+                            <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" title="Clear Search">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                            <button class="btn btn-primary px-3 d-flex align-items-center gap-1 shadow-sm" type="button" id="openScannerBtn" title="Scan Barcode via Camera [F3]">
+                                <i class="bi bi-camera-fill fs-5"></i>
+                                <span class="d-none d-sm-inline fw-semibold">Scan</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Hold & Resume Button -->
+                    <div class="col-6 col-md-2">
+                        <button class="btn btn-warning w-100 py-2 d-flex align-items-center justify-content-center gap-1" id="holdSaleBtn" title="Hold Current Sale [F4]">
+                            <i class="bi bi-pause-circle"></i> Hold
                         </button>
-                        <button class="btn btn-primary px-3 d-flex align-items-center gap-1 shadow-sm" type="button" id="openScannerBtn" title="Scan Barcode via Camera [F3]">
-                            <i class="bi bi-camera-fill fs-5"></i>
-                            <span class="d-none d-sm-inline fw-semibold">Scan</span>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <button class="btn btn-outline-dark w-100 py-2 d-flex align-items-center justify-content-center gap-1" id="resumeSaleBtn" data-bs-toggle="modal" data-bs-target="#heldSalesModal">
+                            <i class="bi bi-collection"></i> Held (<span id="heldCount">0</span>)
                         </button>
                     </div>
                 </div>
 
-                <!-- Hold & Resume Button -->
-                <div class="col-6 col-md-2">
-                    <button class="btn btn-warning w-100 py-2 d-flex align-items-center justify-content-center gap-1" id="holdSaleBtn" title="Hold Current Sale [F4]">
-                        <i class="bi bi-pause-circle"></i> Hold
-                    </button>
-                </div>
-                <div class="col-6 col-md-2">
-                    <button class="btn btn-outline-dark w-100 py-2 d-flex align-items-center justify-content-center gap-1" id="resumeSaleBtn" data-bs-toggle="modal" data-bs-target="#heldSalesModal">
-                        <i class="bi bi-collection"></i> Held (<span id="heldCount">0</span>)
-                    </button>
+                <!-- Category Filter Pills (Horizontal scrollable touch container) -->
+                <div class="d-flex gap-1 gap-md-2 overflow-auto py-2 mt-2" style="white-space: nowrap; -webkit-overflow-scrolling: touch;">
+                    <button class="btn btn-sm btn-primary category-filter-btn active" data-id="0">All Items</button>
+                    <?php foreach ($categories as $cat): ?>
+                        <button class="btn btn-sm btn-outline-secondary category-filter-btn" data-id="<?= $cat['id'] ?>">
+                            <?= htmlspecialchars($cat['name']) ?>
+                        </button>
+                    <?php endforeach; ?>
                 </div>
             </div>
 
-            <!-- Category Filter Pills (Horizontal scrollable touch container) -->
-            <div class="d-flex gap-1 gap-md-2 overflow-auto py-2 mt-2" style="white-space: nowrap; -webkit-overflow-scrolling: touch;">
-                <button class="btn btn-sm btn-primary category-filter-btn active" data-id="0">All Items</button>
-                <?php foreach ($categories as $cat): ?>
-                    <button class="btn btn-sm btn-outline-secondary category-filter-btn" data-id="<?= $cat['id'] ?>">
-                        <?= htmlspecialchars($cat['name']) ?>
-                    </button>
-                <?php endforeach; ?>
+            <!-- Products Grid Container -->
+            <div class="card border-0 shadow-sm rounded-3 p-2 p-md-3">
+                <div id="productGridLoading" class="text-center py-5 d-none">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <div class="text-muted small mt-2">Searching catalogue...</div>
+                </div>
+
+                <div class="row g-2 g-md-3" id="posProductsContainer" style="max-height: calc(100vh - 290px); overflow-y: auto;">
+                    <!-- Product cards dynamically loaded here via AJAX -->
+                </div>
             </div>
         </div>
 
-        <!-- Products Grid Container -->
-        <div class="card border-0 shadow-sm rounded-3 p-2 p-md-3">
-            <div id="productGridLoading" class="text-center py-5 d-none">
-                <div class="spinner-border text-primary" role="status"></div>
-                <div class="text-muted small mt-2">Searching catalogue...</div>
+        <!-- VIEW 2: Dedicated Variant & Color Picker Panel (Replaces variantSelectModal) -->
+        <div id="posVariantPickerPanel" class="card border-0 shadow-sm rounded-3 p-3 bg-white" style="display: none;">
+            <!-- Header with Back Button -->
+            <div class="d-flex justify-content-between align-items-center pb-2 mb-3 border-bottom">
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm fw-semibold" id="closeVariantPanelBtn" onclick="closeVariantPickerPanel()">
+                        <i class="bi bi-arrow-left me-1"></i> Back to Products (Esc)
+                    </button>
+                    <div id="variantPanelHeaderTitle" class="d-flex align-items-center gap-2">
+                        <!-- Title, SKU, Rate badges populated dynamically -->
+                    </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-light border-0" onclick="closeVariantPickerPanel()" title="Back to Products">
+                    <i class="bi bi-x-lg"></i>
+                </button>
             </div>
 
-            <div class="row g-2 g-md-3" id="posProductsContainer" style="max-height: calc(100vh - 290px); overflow-y: auto;">
-                <!-- Product cards dynamically loaded here via AJAX -->
+            <!-- Variant & Color Cards Grid -->
+            <div class="row g-2 g-md-3" id="variantGridContainer" style="max-height: calc(100vh - 260px); overflow-y: auto;">
+                <!-- Size & Color cards dynamically populated here -->
             </div>
         </div>
     </div>
@@ -418,24 +444,7 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
     </div>
 </div>
 
-<!-- ========================================== -->
-<!-- MODAL: Product Variant Selection (Size & Color) -->
-<!-- ========================================== -->
-<div class="modal fade" id="variantSelectModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title fw-bold" id="variantModalTitle">Select Size & Color</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-3 p-md-4">
-                <div class="row g-2 g-md-3" id="variantGridContainer">
-                    <!-- Variant buttons/cards populated dynamically -->
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+
 
 
 
