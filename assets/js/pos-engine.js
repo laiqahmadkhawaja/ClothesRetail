@@ -16,7 +16,7 @@ function setGlobalPricingTier(tier) {
         }
     }
 
-    // Update prices of existing items in cart
+    // Update prices of existing items in cart to match active tier
     cart.forEach(item => {
         let baseRate = (currentPricingTier === 'wholesale' && item.wholesale_price > 0) ? item.wholesale_price : item.selling_price;
         if (item.unit_type === 'suit' && item.meters_per_suit > 0) {
@@ -29,6 +29,11 @@ function setGlobalPricingTier(tier) {
     });
 
     renderCart();
+
+    // Reload product grid catalogue so displayed cards instantly reflect Wholesale vs Retail rates
+    const searchInp = document.getElementById("posSearchInput");
+    loadProducts(searchInp ? searchInp.value.trim() : '', currentCategory);
+
     showToast(`Switched to ${currentPricingTier === 'wholesale' ? 'Wholesale (تھوک)' : 'Retail (پرچون)'} Rates`, 'info');
 }
 window.setGlobalPricingTier = setGlobalPricingTier;
@@ -293,7 +298,21 @@ function loadProducts(query = '', category_id = 0) {
                 const minPrice = parseFloat(p.min_price) || parseFloat(p.default_selling_price) || 0;
                 const maxPrice = parseFloat(p.max_price) || minPrice;
                 const minWholesale = parseFloat(p.min_wholesale_price) || parseFloat(p.default_wholesale_price) || 0;
-                const priceLabel = (minPrice === maxPrice) ? `Rs. ${minPrice.toLocaleString()}` : `Rs. ${minPrice.toLocaleString()} - ${maxPrice.toLocaleString()}`;
+                const maxWholesale = parseFloat(p.max_wholesale_price) || minWholesale;
+
+                const isWholesaleActive = (currentPricingTier === 'wholesale');
+                let displayedRate = '';
+                let secondaryRate = '';
+
+                if (isWholesaleActive && minWholesale > 0) {
+                    displayedRate = (minWholesale === maxWholesale) ? `Rs. ${minWholesale.toLocaleString()}` : `Rs. ${minWholesale.toLocaleString()} - ${maxWholesale.toLocaleString()}`;
+                    secondaryRate = `<div class="text-muted" style="font-size: 0.72rem;">Retail: Rs. ${minPrice.toLocaleString()}</div>`;
+                } else {
+                    displayedRate = (minPrice === maxPrice) ? `Rs. ${minPrice.toLocaleString()}` : `Rs. ${minPrice.toLocaleString()} - ${maxPrice.toLocaleString()}`;
+                    if (minWholesale > 0) {
+                        secondaryRate = `<div class="text-success fw-semibold" style="font-size: 0.72rem;"><i class="bi bi-box-seam me-1"></i>W-Sale: Rs. ${minWholesale.toLocaleString()}</div>`;
+                    }
+                }
 
                 const isOutOfStock = totalStock <= 0;
                 const isFabric = (p.item_type === 'fabric');
@@ -317,10 +336,10 @@ function loadProducts(query = '', category_id = 0) {
                         </div>
                         <div class="mt-2 pt-2 border-top w-100">
                             <div class="d-flex justify-content-between align-items-center">
-                                <strong class="text-primary fs-6">${priceLabel}</strong>
-                                ${isFabric ? `<span class="badge" style="font-size: 0.65rem; background-color: #f3e8ff; color: #6b21a8; font-weight: 600;">Thaan</span>` : '<span class="badge bg-light text-muted border" style="font-size: 0.65rem;">Garment</span>'}
+                                <strong class="${isWholesaleActive && minWholesale > 0 ? 'text-success' : 'text-primary'} fs-6">${displayedRate}</strong>
+                                ${isWholesaleActive && minWholesale > 0 ? `<span class="badge bg-success-subtle text-success border border-success" style="font-size: 0.65rem;">Wholesale</span>` : (isFabric ? `<span class="badge" style="font-size: 0.65rem; background-color: #f3e8ff; color: #6b21a8; font-weight: 600;">Thaan</span>` : '<span class="badge bg-light text-muted border" style="font-size: 0.65rem;">Garment</span>')}
                             </div>
-                            ${minWholesale > 0 ? `<div class="text-success fw-semibold mt-1" style="font-size: 0.72rem;"><i class="bi bi-box-seam me-1"></i>W-Sale: Rs. ${minWholesale.toLocaleString()}</div>` : ''}
+                            ${secondaryRate}
                         </div>
                     </div>
                 `;
@@ -369,7 +388,8 @@ function selectProductForVariants(productId) {
             document.getElementById("variantModalTitle").innerHTML = `
                 <i class="bi ${isFabric ? 'bi-scissors' : 'bi-tag-fill'} me-2"></i> ${p.name}
                 <span class="badge bg-white text-dark ms-2 fw-normal small">${p.product_code}</span>
-                ${isFabric ? `<span class="badge bg-purple text-white ms-1" style="background-color: #7c3aed;">Fabric / Thaan</span>` : ''}
+                ${isFabric ? `<span class="badge text-white ms-1" style="background-color: #7c3aed;">Fabric / Thaan</span>` : ''}
+                <span class="badge ${currentPricingTier === 'wholesale' ? 'bg-success' : 'bg-primary'} text-white ms-1">${currentPricingTier === 'wholesale' ? '📦 Wholesale Rates' : '🛒 Retail Rates'}</span>
             `;
 
             const container = document.getElementById("variantGridContainer");
@@ -381,10 +401,11 @@ function selectProductForVariants(productId) {
                 data.variants.forEach(v => {
                     const stock = parseFloat(v.stock_quantity) || 0;
                     const isOut = stock <= 0;
-                    const sellPrice = parseFloat(v.selling_price) || 0;
-                    const wholesalePrice = parseFloat(v.wholesale_price) || 0;
-                    const suitSellPrice = sellPrice * suitMeters;
-                    const suitWholesalePrice = wholesalePrice * suitMeters;
+                    const sellPrice = parseFloat(v.selling_price) || (p.selling_price ? parseFloat(p.selling_price) : 0) || 0;
+                    const wholesalePrice = parseFloat(v.wholesale_price) || (p.wholesale_price ? parseFloat(p.wholesale_price) : 0) || 0;
+                    const isWholesaleActive = (currentPricingTier === 'wholesale');
+                    const activePrice = (isWholesaleActive && wholesalePrice > 0) ? wholesalePrice : sellPrice;
+                    const activeSuitPrice = activePrice * suitMeters;
 
                     const col = document.createElement("div");
                     col.className = "col-12 col-sm-6 col-md-4";
@@ -403,17 +424,17 @@ function selectProductForVariants(productId) {
                             <div class="mt-2 pt-1 border-top">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <span class="small text-muted">SKU: ${v.sku}</span>
-                                    <strong class="text-primary">Rs. ${sellPrice.toLocaleString()} <small class="text-muted">/${isFabric ? (p.unit_type || 'm') : 'pc'}</small></strong>
+                                    <strong class="${isWholesaleActive && wholesalePrice > 0 ? 'text-success' : 'text-primary'}">Rs. ${activePrice.toLocaleString()} <small class="text-muted">/${isFabric ? (p.unit_type || 'm') : 'pc'}</small></strong>
                                 </div>
-                                ${wholesalePrice > 0 ? `<div class="small text-success text-end">W-Sale: Rs. ${wholesalePrice.toLocaleString()}</div>` : ''}
+                                ${isWholesaleActive ? `<div class="small text-muted text-end">Retail: Rs. ${sellPrice.toLocaleString()}</div>` : (wholesalePrice > 0 ? `<div class="small text-success text-end">W-Sale: Rs. ${wholesalePrice.toLocaleString()}</div>` : '')}
                             </div>
                             ${isFabric && suitMeters > 0 ? `
                                 <div class="d-flex gap-1 mt-2 pt-2 border-top" onclick="event.stopPropagation()">
-                                    <button class="btn btn-sm btn-outline-primary py-1 flex-fill fw-semibold" style="font-size: 0.75rem;" onclick='chooseVariantWithUnit(${JSON.stringify(v)}, ${JSON.stringify(p)}, "meter")'>
-                                        + Meter (Rs. ${sellPrice})
+                                    <button class="btn btn-sm ${isWholesaleActive && wholesalePrice > 0 ? 'btn-outline-success' : 'btn-outline-primary'} py-1 flex-fill fw-semibold" style="font-size: 0.75rem;" onclick='chooseVariantWithUnit(${JSON.stringify(v)}, ${JSON.stringify(p)}, "meter")'>
+                                        + Meter (Rs. ${activePrice.toLocaleString()})
                                     </button>
-                                    <button class="btn btn-sm btn-primary py-1 flex-fill fw-semibold" style="font-size: 0.75rem;" onclick='chooseVariantWithUnit(${JSON.stringify(v)}, ${JSON.stringify(p)}, "suit")'>
-                                        + Suit ${suitMeters}m (Rs. ${suitSellPrice.toLocaleString()})
+                                    <button class="btn btn-sm ${isWholesaleActive && wholesalePrice > 0 ? 'btn-success' : 'btn-primary'} py-1 flex-fill fw-semibold" style="font-size: 0.75rem;" onclick='chooseVariantWithUnit(${JSON.stringify(v)}, ${JSON.stringify(p)}, "suit")'>
+                                        + Suit ${suitMeters}m (Rs. ${activeSuitPrice.toLocaleString()})
                                     </button>
                                 </div>
                             ` : ''}
@@ -450,8 +471,8 @@ function addVariantToCart(variant, qty = 1, unit = null, prodMeta = null) {
     const unitType = unit || (variant.unit_type || (prodMeta && prodMeta.unit_type) || 'piece');
     const metersPerSuit = parseFloat(variant.meters_per_suit || (prodMeta && prodMeta.meters_per_suit) || 4.5);
 
-    const sellPrice = parseFloat(variant.selling_price) || 0;
-    const wholesalePrice = parseFloat(variant.wholesale_price) || 0;
+    const sellPrice = parseFloat(variant.selling_price) || (prodMeta ? parseFloat(prodMeta.selling_price) : 0) || (variant.default_selling_price ? parseFloat(variant.default_selling_price) : 0) || 0;
+    const wholesalePrice = parseFloat(variant.wholesale_price) || (prodMeta ? parseFloat(prodMeta.wholesale_price) : 0) || (variant.default_wholesale_price ? parseFloat(variant.default_wholesale_price) : 0) || 0;
     let baseRate = (currentPricingTier === 'wholesale' && wholesalePrice > 0) ? wholesalePrice : sellPrice;
 
     let finalPrice = baseRate;

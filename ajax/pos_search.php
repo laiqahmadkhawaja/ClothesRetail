@@ -44,6 +44,7 @@ if (!empty($query)) {
     // A. Check variant barcode & SKU
     $stmt = $pdo->prepare("SELECT pv.*, p.name AS product_name, p.product_code,
                                   p.item_type, p.unit_type, p.meters_per_suit, p.thaan_length,
+                                  p.selling_price AS default_selling_price, p.wholesale_price AS default_wholesale_price,
                                   s.name AS size_name, c.name AS color_name, c.hex_code AS color_hex
                            FROM product_variants pv
                            JOIN products p ON pv.product_id = p.id
@@ -70,6 +71,7 @@ if (!empty($query)) {
     if ($masterProd) {
         $stmtVars = $pdo->prepare("SELECT pv.*, p.name AS product_name, p.product_code,
                                           p.item_type, p.unit_type, p.meters_per_suit, p.thaan_length,
+                                          p.selling_price AS default_selling_price, p.wholesale_price AS default_wholesale_price,
                                           s.name AS size_name, c.name AS color_name, c.hex_code AS color_hex
                                    FROM product_variants pv
                                    JOIN products p ON pv.product_id = p.id

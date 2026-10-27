@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_action']) && $_P
     if ($active) {
         $_SESSION['flash_error'] = "You already have an active shift (#{$active['id']}). Please close it first.";
     } else {
-        $stmt = $pdo->prepare("INSERT INTO cash_registers (user_id, opening_time, opening_balance, notes, status) VALUES (?, NOW(), ?, ?, 'open')");
+        $stmt = $pdo->prepare("INSERT INTO cash_registers (cashier_id, opening_time, opening_balance, notes, status) VALUES (?, NOW(), ?, ?, 'open')");
         $stmt->execute([$user['id'], $opening_balance, $notes]);
         $new_id = $pdo->lastInsertId();
 
@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_action']) && $_P
         $expected_cash = ($reg['opening_balance'] + $reg['total_sales_cash'] + $reg['total_payments_received']) - ($reg['total_expenses_paid'] + $reg['total_supplier_paid'] + $reg['total_refunds_paid']);
         $diff = $closing_balance - $expected_cash;
 
-        $stmtUpd = $pdo->prepare("UPDATE cash_registers SET closing_time = NOW(), closing_balance = ?, closing_notes = ?, cash_difference = ?, status = 'closed' WHERE id = ?");
+        $stmtUpd = $pdo->prepare("UPDATE cash_registers SET closing_time = NOW(), closing_balance = ?, notes = ?, cash_difference = ?, status = 'closed' WHERE id = ?");
         $stmtUpd->execute([$closing_balance, $notes, $diff, $reg_id]);
 
         log_audit($pdo, 'Close Shift', 'POS', "Shift #$reg_id closed. Expected: Rs. $expected_cash, Counted: Rs. $closing_balance, Diff: Rs. $diff");
@@ -250,7 +250,7 @@ if ($active_register) {
 <?php
 $shifts = $pdo->query("SELECT cr.*, u.full_name AS cashier_name 
                        FROM cash_registers cr 
-                       JOIN users u ON cr.user_id = u.id 
+                       JOIN users u ON cr.cashier_id = u.id 
                        ORDER BY cr.id DESC 
                        LIMIT 25")->fetchAll();
 ?>
