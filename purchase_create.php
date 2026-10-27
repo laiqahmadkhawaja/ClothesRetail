@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         foreach ($item_variants as $idx => $v_id) {
             $vid = intval($v_id);
-            $qty = intval($item_quantities[$idx] ?? 0);
+            $qty = floatval($item_quantities[$idx] ?? 0);
             $cost = floatval($item_costs[$idx] ?? 0);
             if ($vid > 0 && $qty > 0) {
                 $line_cost = $qty * $cost;
@@ -86,15 +86,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         ]);
         $purchase_id = $pdo->lastInsertId();
 
-        // Insert items, increment variant stock, insert stock movement
+        // Prepare statements for purchase items, variant update with Weighted Average Cost, and stock movement
         $stmtItem = $pdo->prepare("INSERT INTO purchase_items (purchase_id, product_id, variant_id, quantity, unit_cost, total_cost) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmtGetVar = $pdo->prepare("SELECT stock_quantity, purchase_price FROM product_variants WHERE id = ? FOR UPDATE");
         $stmtStockUpd = $pdo->prepare("UPDATE product_variants SET stock_quantity = stock_quantity + ?, purchase_price = ? WHERE id = ?");
         $stmtMove = $pdo->prepare("INSERT INTO stock_movements (product_id, variant_id, movement_date, movement_type, reference_no, qty_in, qty_out, unit_cost, notes, created_by) VALUES (?, ?, NOW(), 'purchase', ?, ?, 0, ?, ?, ?)");
+        $stmtProdUpd = $pdo->prepare("UPDATE products SET cost_price = (
+            SELECT IFNULL(
+                SUM(pv.stock_quantity * pv.purchase_price) / NULLIF(SUM(pv.stock_quantity), 0),
+                AVG(pv.purchase_price)
+            )
+            FROM product_variants pv 
+            WHERE pv.product_id = ? AND pv.status = 'active'
+        ) WHERE id = ?");
+
+        $affected_products = [];
 
         foreach ($validated_items as $vi) {
+            // Lock and fetch current stock and current cost of variant
+            $stmtGetVar->execute([$vi['variant_id']]);
+            $curVar = $stmtGetVar->fetch();
+
+            $oldStock = floatval($curVar['stock_quantity'] ?? 0);
+            $oldCost = floatval($curVar['purchase_price'] ?? 0);
+            $newQty = floatval($vi['qty']);
+            $newCost = floatval($vi['cost']);
+
+            // Weighted Average Cost Formula:
+            // If existing inventory > 0: Avg Cost = ((oldStock * oldCost) + (newQty * newCost)) / (oldStock + newQty)
+            // If existing inventory <= 0: Avg Cost = newCost
+            if ($oldStock > 0 && ($oldStock + $newQty) > 0) {
+                $avgCost = (($oldStock * $oldCost) + ($newQty * $newCost)) / ($oldStock + $newQty);
+            } else {
+                $avgCost = $newCost;
+            }
+            $avgCost = round($avgCost, 2);
+
+            // Record purchase line item with actual purchase cost
             $stmtItem->execute([$purchase_id, $vi['product_id'], $vi['variant_id'], $vi['qty'], $vi['cost'], $vi['line_cost']]);
-            $stmtStockUpd->execute([$vi['qty'], $vi['cost'], $vi['variant_id']]);
-            $stmtMove->execute([$vi['product_id'], $vi['variant_id'], $purchase_number, $vi['qty'], $vi['cost'], "Supplier Purchase #$purchase_number", $user['id'] ?? 1]);
+            
+            // Increment stock and update variant purchase_price to the new Weighted Average Cost
+            $stmtStockUpd->execute([$vi['qty'], $avgCost, $vi['variant_id']]);
+            
+            // Record stock movement showing old stock/cost, purchased cost, and new average cost
+            $moveNote = "Supplier Purchase #$purchase_number [Old: {$oldStock} @ Rs. {$oldCost} | Bought: {$newQty} @ Rs. {$newCost} | New Avg Cost: Rs. {$avgCost}]";
+            $stmtMove->execute([$vi['product_id'], $vi['variant_id'], $purchase_number, $vi['qty'], $vi['cost'], $moveNote, $user['id'] ?? 1]);
+
+            $affected_products[$vi['product_id']] = true;
+        }
+
+        // Update each affected product's cost_price to match the weighted average across its active variants
+        foreach (array_keys($affected_products) as $pid) {
+            $stmtProdUpd->execute([$pid, $pid]);
         }
 
         // Supplier Ledger Update
@@ -126,9 +169,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
 
         $pdo->commit();
-        log_audit($pdo, 'Create Purchase', 'Purchases', "Created purchase #$purchase_number, total: Rs. $total_amount");
+        log_audit($pdo, 'Create Purchase', 'Purchases', "Created purchase #$purchase_number, total: Rs. $total_amount (Updated Weighted Average Cost)");
 
-        $_SESSION['flash_success'] = "Purchase #$purchase_number saved successfully! Stock quantities have been updated.";
+        $_SESSION['flash_success'] = "Purchase #$purchase_number saved successfully! Stock quantities and Weighted Average Costs have been updated.";
         header("Location: purchases.php");
         exit;
 
@@ -195,17 +238,21 @@ $variants = $pdo->query("SELECT pv.id, pv.product_id, pv.sku, pv.barcode, pv.pur
             </div>
         </div>
 
-        <!-- Line Items Table -->
-        <h6 class="fw-bold text-dark mb-2"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i> Received Clothing Variants</h6>
+        <!-- Line Items Table with Weighted Average Cost System -->
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold text-dark mb-0"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i> Received Clothing Variants</h6>
+            <span class="badge bg-primary-subtle text-primary border small"><i class="bi bi-calculator me-1"></i> Weighted Average Cost (WAC) Auto-Updated</span>
+        </div>
         <div class="table-responsive mb-3">
             <table class="table table-bordered align-middle" id="purchaseItemsTable">
                 <thead class="table-light small text-muted">
                     <tr>
-                        <th style="min-width: 320px;">Garment & Size/Color Variant *</th>
-                        <th style="width: 120px;" class="text-center">Stock In Hand</th>
-                        <th style="width: 140px;" class="text-center">Purchase Cost (Rs)</th>
+                        <th style="min-width: 280px;">Garment & Size/Color Variant *</th>
+                        <th style="width: 140px;" class="text-center">Current Stock & Cost</th>
                         <th style="width: 120px;" class="text-center">Receive Qty *</th>
-                        <th style="width: 140px;" class="text-end">Line Total (Rs)</th>
+                        <th style="width: 140px;" class="text-center">Purchase Cost (Rs) *</th>
+                        <th style="width: 140px;" class="text-center">New Avg Cost</th>
+                        <th style="width: 130px;" class="text-end">Line Total (Rs)</th>
                         <th style="width: 40px;"></th>
                     </tr>
                 </thead>
@@ -310,12 +357,15 @@ function addPurchaseRow() {
                 ${optionsHtml}
             </select>
         </td>
-        <td class="text-center text-muted stock-display">-</td>
+        <td class="text-center text-muted stock-display small">-</td>
+        <td>
+            <input type="number" name="item_qty[]" class="form-control form-control-sm text-center qty-input fw-bold" value="1" min="0.01" step="any" required oninput="recalcPurchaseTotals()">
+        </td>
         <td>
             <input type="number" name="item_cost[]" class="form-control form-control-sm text-end cost-input" value="0" min="0" step="any" required oninput="recalcPurchaseTotals()">
         </td>
-        <td>
-            <input type="number" name="item_qty[]" class="form-control form-control-sm text-center qty-input fw-bold" value="1" min="1" required oninput="recalcPurchaseTotals()">
+        <td class="text-center avg-cost-display small">
+            <span class="text-muted">-</span>
         </td>
         <td class="text-end fw-bold line-total-display">Rs. 0</td>
         <td class="text-center">
@@ -330,11 +380,11 @@ function addPurchaseRow() {
 function onVariantChange(selectEl) {
     const tr = selectEl.closest("tr");
     const opt = selectEl.options[selectEl.selectedIndex];
-    const cost = parseFloat(opt.dataset.cost) || 0;
-    const stock = opt.dataset.stock || '0';
+    const cost = parseFloat(opt?.dataset?.cost) || 0;
+    const stock = parseFloat(opt?.dataset?.stock) || 0;
 
     tr.querySelector(".cost-input").value = cost;
-    tr.querySelector(".stock-display").innerText = `${stock} in hand`;
+    tr.querySelector(".stock-display").innerHTML = `<span class="fw-semibold text-dark">${stock}</span> <small class="text-muted">@ Rs.${cost}</small>`;
     recalcPurchaseTotals();
 }
 
@@ -351,11 +401,30 @@ function removeRow(btn) {
 function recalcPurchaseTotals() {
     let subtotal = 0;
     document.querySelectorAll("#purchaseItemsBody tr").forEach(tr => {
+        const selectEl = tr.querySelector(".variant-picker");
+        const opt = selectEl?.options[selectEl.selectedIndex];
+        const oldCost = parseFloat(opt?.dataset?.cost) || 0;
+        const oldStock = parseFloat(opt?.dataset?.stock) || 0;
+
         const cost = parseFloat(tr.querySelector(".cost-input")?.value) || 0;
-        const qty = parseInt(tr.querySelector(".qty-input")?.value) || 0;
+        const qty = parseFloat(tr.querySelector(".qty-input")?.value) || 0;
         const line = cost * qty;
-        tr.querySelector(".line-total-display").innerText = `Rs. ${line.toLocaleString()}`;
+        tr.querySelector(".line-total-display").innerText = `Rs. ${Math.round(line).toLocaleString()}`;
         subtotal += line;
+
+        // Compute preview of Weighted Average Cost
+        const avgDisplay = tr.querySelector(".avg-cost-display");
+        if (avgDisplay) {
+            if (selectEl && selectEl.value && qty > 0) {
+                let newAvg = cost;
+                if (oldStock > 0 && (oldStock + qty) > 0) {
+                    newAvg = ((oldStock * oldCost) + (qty * cost)) / (oldStock + qty);
+                }
+                avgDisplay.innerHTML = `<span class="badge bg-success-subtle text-success border border-success fw-bold">Rs. ${newAvg.toFixed(2)}</span>`;
+            } else {
+                avgDisplay.innerHTML = `<span class="text-muted">-</span>`;
+            }
+        }
     });
 
     const disc = parseFloat(document.getElementById("purchaseDiscount").value) || 0;
@@ -365,9 +434,9 @@ function recalcPurchaseTotals() {
     const grandTotal = Math.max(0, (subtotal - disc) + freight);
     const balance = Math.max(0, grandTotal - paid);
 
-    document.getElementById("purchaseSubtotal").innerText = `Rs. ${subtotal.toLocaleString()}`;
-    document.getElementById("purchaseTotalBill").innerText = `Rs. ${grandTotal.toLocaleString()}`;
-    document.getElementById("purchaseBalanceDue").innerText = `Rs. ${balance.toLocaleString()}`;
+    document.getElementById("purchaseSubtotal").innerText = `Rs. ${Math.round(subtotal).toLocaleString()}`;
+    document.getElementById("purchaseTotalBill").innerText = `Rs. ${Math.round(grandTotal).toLocaleString()}`;
+    document.getElementById("purchaseBalanceDue").innerText = `Rs. ${Math.round(balance).toLocaleString()}`;
 }
 </script>
 
