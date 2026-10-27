@@ -164,8 +164,38 @@ try {
         $stmtUpdSaleItem->execute([$pri['qty'], $pri['qty'], $pri['sale_item_id']]);
 
         if ($pri['condition'] === 'restock') {
-            $stmtRestock->execute([$pri['qty'], $pri['variant_id']]);
-            $stmtMoveIn->execute([$pri['product_id'], $pri['variant_id'], 'sale_return', $retNumber, $pri['qty'], $pri['cost_price'], "Return Restock from Invoice {$sale['invoice_number']}", $user['id']]);
+            // Fetch current variant stock and current average cost
+            $stmtCurVar = $pdo->prepare("SELECT stock_quantity, purchase_price FROM product_variants WHERE id = ? FOR UPDATE");
+            $stmtCurVar->execute([$pri['variant_id']]);
+            $curV = $stmtCurVar->fetch();
+
+            $curStock = floatval($curV['stock_quantity'] ?? 0);
+            $curCost = floatval($curV['purchase_price'] ?? 0);
+            $retQty = floatval($pri['qty']);
+            $origSaleCost = floatval($pri['cost_price']); // Historical cost recorded at time of sale
+
+            // Re-blend into Weighted Average Cost upon return restock
+            if ($curStock > 0 && ($curStock + $retQty) > 0) {
+                $newAvgCost = (($curStock * $curCost) + ($retQty * $origSaleCost)) / ($curStock + $retQty);
+            } else {
+                $newAvgCost = ($origSaleCost > 0) ? $origSaleCost : $curCost;
+            }
+            $newAvgCost = round($newAvgCost, 2);
+
+            // Update variant stock and weighted average cost
+            $pdo->prepare("UPDATE product_variants SET stock_quantity = stock_quantity + ?, purchase_price = ? WHERE id = ?")
+                ->execute([$retQty, $newAvgCost, $pri['variant_id']]);
+
+            // Sync parent product cost_price
+            $pdo->prepare("UPDATE products SET cost_price = (
+                SELECT IFNULL(SUM(pv.stock_quantity * pv.purchase_price) / NULLIF(SUM(pv.stock_quantity), 0), AVG(pv.purchase_price))
+                FROM product_variants pv WHERE pv.product_id = ? AND pv.status = 'active'
+            ) WHERE id = ?")->execute([$pri['product_id'], $pri['product_id']]);
+
+            $stmtMoveIn->execute([
+                $pri['product_id'], $pri['variant_id'], 'sale_return', $retNumber, $retQty, $origSaleCost, 
+                "Return Restock from Invoice {$sale['invoice_number']} [Re-blended Avg Cost: Rs. {$newAvgCost}]", $user['id']
+            ]);
         } else {
             $stmtMoveIn->execute([$pri['product_id'], $pri['variant_id'], 'damage', $retNumber, 0, $pri['cost_price'], "Defective Return from Invoice {$sale['invoice_number']}", $user['id']]);
         }
