@@ -45,25 +45,52 @@ $settings = get_settings($pdo);
             margin: 0;
         }
         body {
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 13px;
+            font-family: 'Courier New', Courier, 'Segoe UI', Tahoma, Arial, monospace;
+            font-size: 12.5px;
+            font-weight: bold;
             color: #000;
             background: #fff;
             margin: 0;
             padding: 10px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
         .receipt-container {
             width: 78mm;
             margin: 0 auto;
+            font-weight: bold;
+            color: #000;
+        }
+        /* All thermal text rendered bold as requested to prevent faint printing */
+        .receipt-container,
+        .receipt-container * {
+            font-weight: bold !important;
+            color: #000 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
         .text-center { text-align: center; }
         .text-end { text-align: right; }
         .fw-bold { font-weight: bold; }
-        .border-top { border-top: 1px dashed #000; }
-        .border-bottom { border-bottom: 1px dashed #000; }
+        .border-top { border-top: 1.5px dashed #000; }
+        .border-bottom { border-bottom: 1.5px dashed #000; }
         .my-1 { margin-top: 4px; margin-bottom: 4px; }
-        .my-2 { margin-top: 8px; margin-bottom: 8px; }
+        .my-2 { margin-top: 7px; margin-bottom: 7px; }
         .py-1 { padding-top: 4px; padding-bottom: 4px; }
+        .shop-title {
+            font-size: 19px;
+            line-height: 1.2;
+            text-transform: uppercase;
+            margin: 0 0 3px 0;
+        }
+        .sub-header-text {
+            font-size: 11.5px;
+            line-height: 1.35;
+        }
+        .meta-text {
+            font-size: 12px;
+            line-height: 1.4;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -71,6 +98,42 @@ $settings = get_settings($pdo);
         }
         th, td {
             padding: 3px 0;
+        }
+        .item-name {
+            font-size: 13.5px;
+            line-height: 1.3;
+            padding-top: 5px;
+        }
+        .item-details {
+            font-size: 11px;
+            padding-left: 6px;
+        }
+        .item-values {
+            font-size: 12.5px;
+        }
+        .summary-row {
+            font-size: 12.5px;
+            line-height: 1.4;
+            display: flex;
+            justify-content: space-between;
+        }
+        .net-total-row {
+            font-size: 17px;
+            line-height: 1.3;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1.5px dashed #000;
+            border-bottom: 1.5px dashed #000;
+            padding: 5px 0;
+            margin: 5px 0;
+        }
+        .footer-text {
+            font-size: 11.5px;
+            line-height: 1.35;
+        }
+        .branding-text {
+            font-size: 10px;
+            margin-top: 4px;
         }
         .no-print {
             text-align: center;
@@ -85,6 +148,21 @@ $settings = get_settings($pdo);
             border-radius: 4px;
         }
         @media print {
+            @page {
+                size: auto;
+                margin: 0;
+            }
+            body {
+                padding: 0;
+                margin: 0;
+                background: #fff;
+            }
+            .receipt-container {
+                width: 100%;
+                max-width: 78mm;
+                margin: 0 auto;
+                padding: 2mm 3mm;
+            }
             .no-print { display: none !important; }
         }
     </style>
@@ -98,15 +176,21 @@ $settings = get_settings($pdo);
 
 <div class="receipt-container">
     <div class="text-center">
-        <h2 class="fw-bold my-1" style="font-size: 18px; margin-bottom: 2px;"><?= htmlspecialchars($settings['shop_name'] ?? 'Clothes Retail') ?></h2>
-        <div style="font-size: 11px;"><?= htmlspecialchars($settings['tagline'] ?? '') ?></div>
-        <div style="font-size: 11px;"><?= htmlspecialchars($settings['address'] ?? '') ?></div>
-        <div style="font-size: 11px;">Tel: <?= htmlspecialchars($settings['phone'] ?? '') ?></div>
+        <h2 class="shop-title"><?= htmlspecialchars($settings['shop_name'] ?? 'Clothes Retail') ?></h2>
+        <?php if (!empty($settings['tagline'])): ?>
+            <div class="sub-header-text"><?= htmlspecialchars($settings['tagline']) ?></div>
+        <?php endif; ?>
+        <?php if (!empty($settings['address'])): ?>
+            <div class="sub-header-text"><?= htmlspecialchars($settings['address']) ?></div>
+        <?php endif; ?>
+        <?php if (!empty($settings['phone'])): ?>
+            <div class="sub-header-text">Tel: <?= htmlspecialchars($settings['phone']) ?></div>
+        <?php endif; ?>
     </div>
 
-    <div class="border-top border-bottom my-2 py-1" style="font-size: 11px;">
+    <div class="border-top border-bottom my-2 py-1 meta-text">
         <div style="display: flex; justify-content: space-between;">
-            <span>Inv: <strong><?= htmlspecialchars($sale['invoice_number']) ?></strong></span>
+            <span>Inv: <?= htmlspecialchars($sale['invoice_number']) ?></span>
             <span><?= date('d-M-y h:i A', strtotime($sale['sale_date'])) ?></span>
         </div>
         <div style="display: flex; justify-content: space-between;">
@@ -117,7 +201,7 @@ $settings = get_settings($pdo);
 
     <table>
         <thead>
-            <tr class="border-bottom">
+            <tr class="border-bottom" style="font-size: 12px;">
                 <th style="text-align: left;">Item [Size/Col]</th>
                 <th style="text-align: center;">Qty</th>
                 <th style="text-align: right;">Price</th>
@@ -127,66 +211,66 @@ $settings = get_settings($pdo);
         <tbody>
             <?php foreach ($items as $it): ?>
                 <tr>
-                    <td colspan="4" style="padding-top: 4px;">
-                        <strong><?= htmlspecialchars($it['product_name']) ?></strong>
+                    <td colspan="4" class="item-name">
+                        <?= htmlspecialchars($it['product_name']) ?>
                     </td>
                 </tr>
-                <tr class="border-bottom" style="font-size: 11px;">
-                    <td style="color: #444; padding-left: 8px;">
+                <tr class="border-bottom item-values">
+                    <td class="item-details">
                         [<?= htmlspecialchars($it['size_name']) ?> / <?= htmlspecialchars($it['color_name']) ?>]
                     </td>
                     <td style="text-align: center;"><?= rtrim(rtrim(number_format($it['quantity'], 2), '0'), '.') ?><?= !empty($it['unit_type']) && $it['unit_type'] !== 'piece' ? ' ' . $it['unit_type'] : '' ?></td>
                     <td style="text-align: right;"><?= number_format($it['unit_price'], 0) ?></td>
-                    <td style="text-align: right; font-weight: bold;"><?= number_format($it['total_price'], 0) ?></td>
+                    <td style="text-align: right;"><?= number_format($it['total_price'], 0) ?></td>
                 </tr>
             <?php endforeach; ?>
         </tbody>
     </table>
 
-    <div class="my-2" style="font-size: 12px;">
-        <div style="display: flex; justify-content: space-between;">
+    <div class="my-2">
+        <div class="summary-row">
             <span>Subtotal:</span>
             <span><?= format_currency($sale['subtotal']) ?></span>
         </div>
 
         <?php if ($sale['bill_discount'] > 0): ?>
-        <div style="display: flex; justify-content: space-between;">
+        <div class="summary-row">
             <span>Bill Discount:</span>
             <span>-<?= format_currency($sale['bill_discount']) ?></span>
         </div>
         <?php endif; ?>
 
         <?php if ($sale['tax_amount'] > 0): ?>
-        <div style="display: flex; justify-content: space-between;">
+        <div class="summary-row">
             <span>Tax:</span>
             <span>+<?= format_currency($sale['tax_amount']) ?></span>
         </div>
         <?php endif; ?>
 
-        <div class="border-top border-bottom py-1 my-1 fw-bold" style="display: flex; justify-content: space-between; font-size: 15px;">
+        <div class="net-total-row">
             <span>NET TOTAL:</span>
             <span><?= format_currency($sale['net_total']) ?></span>
         </div>
 
-        <div style="display: flex; justify-content: space-between;">
+        <div class="summary-row">
             <span>Paid Amount (<?= ucfirst($sale['payment_method']) ?>):</span>
             <span><?= format_currency($sale['paid_amount']) ?></span>
         </div>
 
         <?php if ($sale['change_returned'] > 0): ?>
-        <div style="display: flex; justify-content: space-between;">
+        <div class="summary-row">
             <span>Change Returned:</span>
             <span><?= format_currency($sale['change_returned']) ?></span>
         </div>
         <?php endif; ?>
 
         <?php if ($sale['balance_due'] > 0): ?>
-        <div style="display: flex; justify-content: space-between; font-weight: bold; color: red;">
+        <div class="summary-row">
             <span>Khata Balance Due:</span>
             <span><?= format_currency($sale['balance_due']) ?></span>
         </div>
         <?php if ($sale['customer_id'] > 1): ?>
-        <div style="display: flex; justify-content: space-between; font-size: 11px;">
+        <div class="summary-row" style="font-size: 11.5px;">
             <span>Total Khata Balance:</span>
             <span><?= format_currency($sale['customer_khata_balance']) ?></span>
         </div>
@@ -194,12 +278,12 @@ $settings = get_settings($pdo);
         <?php endif; ?>
     </div>
 
-    <div class="text-center border-top pt-2 my-2" style="font-size: 11px;">
+    <div class="text-center border-top pt-2 my-2 footer-text">
         <?= nl2br(htmlspecialchars($settings['footer_text'] ?? 'Thank you for shopping with us!')) ?>
         <div style="margin-top: 8px;">
             <svg id="receiptBarcode"></svg>
         </div>
-        <div style="font-size: 10px; color: #666; margin-top: 4px;">Software by ClothesRetail ERP</div>
+        <div class="branding-text">Software by ClothesRetail ERP</div>
     </div>
 </div>
 
