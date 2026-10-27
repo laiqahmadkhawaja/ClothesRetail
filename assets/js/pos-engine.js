@@ -60,17 +60,80 @@ function resetCustomerSelectToDefault() {
     if (!sel) return;
     for (let i = 0; i < sel.options.length; i++) {
         const opt = sel.options[i];
-        if (opt.value === '1' || opt.text.toLowerCase().includes('walk-in')) {
+        if (opt.value === '1' || opt.dataset.walkin === '1' || opt.text.toLowerCase().includes('walk-in')) {
             sel.selectedIndex = i;
-            return;
+            break;
         }
     }
-    if (sel.options.length > 0) sel.selectedIndex = 0;
+    if (sel.selectedIndex < 0 && sel.options.length > 0) sel.selectedIndex = 0;
+    updateCustomerCreditRules();
 }
 window.resetCustomerSelectToDefault = resetCustomerSelectToDefault;
 
+function isWalkInCustomerSelected() {
+    const custSelect = document.getElementById("posCustomerSelect");
+    if (!custSelect || custSelect.selectedIndex < 0) return true;
+    const opt = custSelect.options[custSelect.selectedIndex];
+    if (!opt) return true;
+    const custId = parseInt(opt.value) || 1;
+    const isWalkinData = opt.dataset.walkin === '1';
+    const text = opt.text.toLowerCase();
+    return (custId === 1 || isWalkinData || text.includes('walk-in') || text.includes('walkin') || text.includes('cash customer'));
+}
+window.isWalkInCustomerSelected = isWalkInCustomerSelected;
+
+function updateCustomerCreditRules() {
+    const isWalkin = isWalkInCustomerSelected();
+    const creditOpt = document.getElementById("optCreditMethod");
+    const methodSelect = document.getElementById("checkoutMethodSelect");
+    const custAlert = document.getElementById("customerCreditAlert");
+
+    if (creditOpt) {
+        if (isWalkin) {
+            creditOpt.disabled = true;
+            creditOpt.innerText = "Credit / Khata (Registered Customer Only)";
+            if (methodSelect && methodSelect.value === 'credit') {
+                methodSelect.value = 'cash';
+                showToast("Walk-in customers cannot buy on credit. Switched to Cash.", "warning");
+            }
+        } else {
+            creditOpt.disabled = false;
+            creditOpt.innerText = "Credit / Khata (Udhaar Account)";
+        }
+    }
+
+    if (custAlert) {
+        if (isWalkin) {
+            custAlert.innerText = "Walk-in Customer (Cash/immediate payment required - No Credit).";
+            custAlert.className = "mt-1 small text-muted fw-semibold";
+            custAlert.classList.remove("d-none");
+        } else {
+            const opt = document.getElementById("posCustomerSelect")?.selectedOptions[0];
+            const bal = parseFloat(opt?.dataset.balance) || 0;
+            const lim = parseFloat(opt?.dataset.limit) || 0;
+            if (bal > 0) {
+                custAlert.innerText = `Khata Customer: Current Balance Rs. ${bal.toLocaleString()} / Limit Rs. ${lim.toLocaleString()}`;
+                custAlert.className = "mt-1 small text-primary fw-semibold";
+                custAlert.classList.remove("d-none");
+            } else {
+                custAlert.innerText = `Khata Customer: Active Khata Account (Balance: Rs. 0)`;
+                custAlert.className = "mt-1 small text-success fw-semibold";
+                custAlert.classList.remove("d-none");
+            }
+        }
+    }
+
+    recalcPaymentDifference();
+}
+window.updateCustomerCreditRules = updateCustomerCreditRules;
+
 document.addEventListener("DOMContentLoaded", function() {
+    const custSel = document.getElementById("posCustomerSelect");
+    if (custSel) {
+        custSel.addEventListener("change", updateCustomerCreditRules);
+    }
     resetCustomerSelectToDefault();
+    updateCustomerCreditRules();
     loadProducts();
     updateHeldCount();
 
@@ -151,13 +214,42 @@ document.addEventListener("DOMContentLoaded", function() {
         const method = this.value;
         const splitSec = document.getElementById("splitPaymentSection");
         const singleSec = document.getElementById("singleCashSection");
+        const cashInp = document.getElementById("cashReceivedInput");
+        const net = getCartNetTotal();
+        const isWalkin = isWalkInCustomerSelected();
 
-        if (method === "split") {
+        if (method === "credit") {
+            if (isWalkin) {
+                alert("Walk-in customers cannot purchase on Credit! Please select a registered Khata customer.");
+                this.value = "cash";
+                if (cashInp) {
+                    cashInp.value = net;
+                    cashInp.disabled = false;
+                }
+                splitSec.classList.add("d-none");
+                singleSec.classList.remove("d-none");
+                recalcPaymentDifference();
+                return;
+            }
+            splitSec.classList.add("d-none");
+            singleSec.classList.remove("d-none");
+            if (cashInp) {
+                cashInp.value = 0;
+                cashInp.disabled = true;
+            }
+        } else if (method === "split") {
             splitSec.classList.remove("d-none");
             singleSec.classList.add("d-none");
+            if (cashInp) cashInp.disabled = false;
         } else {
             splitSec.classList.add("d-none");
             singleSec.classList.remove("d-none");
+            if (cashInp) {
+                cashInp.disabled = false;
+                if (parseFloat(cashInp.value) === 0) {
+                    cashInp.value = net;
+                }
+            }
         }
         recalcPaymentDifference();
     });
@@ -753,7 +845,35 @@ function openCheckoutView() {
 
     const net = getCartNetTotal();
     document.getElementById("modalNetPayable").innerText = `Rs. ${net.toLocaleString()}`;
-    document.getElementById("cashReceivedInput").value = net; // default exact cash
+    
+    // Ensure credit rules are applied
+    updateCustomerCreditRules();
+
+    const isWalkin = isWalkInCustomerSelected();
+    const methodSelect = document.getElementById("checkoutMethodSelect");
+    const cashInp = document.getElementById("cashReceivedInput");
+
+    if (isWalkin) {
+        if (methodSelect && methodSelect.value === 'credit') {
+            methodSelect.value = 'cash';
+        }
+        if (cashInp) {
+            cashInp.value = net; // default exact cash
+            cashInp.disabled = false;
+        }
+    } else {
+        if (methodSelect && methodSelect.value === 'credit') {
+            if (cashInp) {
+                cashInp.value = 0;
+                cashInp.disabled = true;
+            }
+        } else {
+            if (cashInp) {
+                cashInp.value = net;
+                cashInp.disabled = false;
+            }
+        }
+    }
     
     // Customer summary
     const custSelect = document.getElementById("posCustomerSelect");
@@ -779,10 +899,9 @@ function openCheckoutView() {
         checkoutView.style.setProperty("display", "flex", "important");
     }
 
-    // Auto-focus cash input
+    // Auto-focus cash input if enabled
     setTimeout(() => {
-        const cashInp = document.getElementById("cashReceivedInput");
-        if (cashInp) {
+        if (cashInp && !cashInp.disabled) {
             cashInp.focus();
             cashInp.select();
         }
@@ -810,7 +929,9 @@ function recalcPaymentDifference() {
     const method = document.getElementById("checkoutMethodSelect").value;
     let totalPaid = 0;
 
-    if (method === "split") {
+    if (method === "credit") {
+        totalPaid = 0;
+    } else if (method === "split") {
         const c = parseFloat(document.getElementById("splitCash").value) || 0;
         const j = parseFloat(document.getElementById("splitJazzCash").value) || 0;
         const d = parseFloat(document.getElementById("splitDigital").value) || 0;
@@ -834,14 +955,35 @@ function recalcPaymentDifference() {
     document.getElementById("changeReturnDisplay").innerText = `Rs. ${change.toLocaleString()}`;
     document.getElementById("balanceDueDisplay").innerText = `Rs. ${due.toLocaleString()}`;
 
-    // Warn if customer is Walk-in and due > 0
-    const custId = parseInt(document.getElementById("posCustomerSelect").value) || 1;
+    // Strictly enforce: Walk-in customers CANNOT save as credit or have balance due!
+    const isWalkin = isWalkInCustomerSelected();
     const alertEl = document.getElementById("customerCreditAlert");
-    if (custId === 1 && due > 0) {
-        alertEl.innerText = "Walk-in customers cannot have credit dues! Select a Khata customer.";
-        alertEl.classList.remove("d-none");
+    const confirmBtn = document.getElementById("confirmCheckoutThermalBtn");
+    const confirmA4Btn = document.getElementById("confirmCheckoutA4Btn");
+
+    if (isWalkin && (due > 0 || method === 'credit')) {
+        if (alertEl) {
+            alertEl.innerText = "❌ Credit Not Allowed: Walk-in customer cannot purchase on credit! Full payment of Rs. " + net.toLocaleString() + " is required.";
+            alertEl.className = "mt-1 small text-danger fw-bold";
+            alertEl.classList.remove("d-none");
+        }
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.classList.add("disabled");
+        }
+        if (confirmA4Btn) {
+            confirmA4Btn.disabled = true;
+            confirmA4Btn.classList.add("disabled");
+        }
     } else {
-        alertEl.classList.add("d-none");
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.classList.remove("disabled");
+        }
+        if (confirmA4Btn) {
+            confirmA4Btn.disabled = false;
+            confirmA4Btn.classList.remove("disabled");
+        }
     }
 }
 
@@ -856,7 +998,9 @@ function submitCheckout(printType = 'thermal') {
     let paidAmount = 0;
     let splitPayments = [];
 
-    if (method === "split") {
+    if (method === "credit") {
+        paidAmount = 0;
+    } else if (method === "split") {
         const c = parseFloat(document.getElementById("splitCash").value) || 0;
         const j = parseFloat(document.getElementById("splitJazzCash").value) || 0;
         const d = parseFloat(document.getElementById("splitDigital").value) || 0;
@@ -871,8 +1015,10 @@ function submitCheckout(printType = 'thermal') {
         paidAmount = parseFloat(document.getElementById("cashReceivedInput").value) || 0;
     }
 
-    if (custId === 1 && paidAmount < net) {
-        alert("Walk-in customer must pay full amount. For partial or credit Khata sales, please select a registered customer.");
+    // Block Walk-in Credit sales strictly
+    const isWalkin = isWalkInCustomerSelected();
+    if (isWalkin && (method === 'credit' || paidAmount < net)) {
+        alert("Credit sale is NOT allowed for Walk-in customers! Full payment of Rs. " + net.toLocaleString() + " is required.\n\nTo save a sale on Credit / Khata, please select or register a customer account.");
         return;
     }
 

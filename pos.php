@@ -170,7 +170,7 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
                             $selected = ($isWalkin && !$walkinSelected) ? 'selected' : '';
                             if ($isWalkin) $walkinSelected = true;
                         ?>
-                            <option value="<?= $c['id'] ?>" data-balance="<?= $c['current_balance'] ?>" data-limit="<?= $c['credit_limit'] ?>" <?= $selected ?>>
+                            <option value="<?= $c['id'] ?>" data-walkin="<?= $isWalkin ? '1' : '0' ?>" data-balance="<?= $c['current_balance'] ?>" data-limit="<?= $c['credit_limit'] ?>" <?= $selected ?>>
                                 <?= htmlspecialchars($c['name']) ?> (<?= $c['phone'] ?>) <?= $c['current_balance'] > 0 ? ' [Khata: Rs. ' . number_format($c['current_balance']) . ']' : '' ?>
                             </option>
                         <?php endforeach; ?>
@@ -367,6 +367,7 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
                             <option value="easypaisa">Easypaisa</option>
                             <option value="bank">Bank Transfer</option>
                             <option value="card">Card / POS Terminal</option>
+                            <option value="credit" id="optCreditMethod" disabled>Credit / Khata (Registered Customer Only)</option>
                             <option value="split">Split Payment (Multiple)</option>
                         </select>
                     </div>

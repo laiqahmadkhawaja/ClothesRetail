@@ -103,7 +103,12 @@ try {
     $change_returned = 0;
     $balance_due = 0;
 
-    if ($paid_amount >= $net_total) {
+    if ($payment_method === 'credit') {
+        $paid_amount = 0;
+        $change_returned = 0;
+        $balance_due = $net_total;
+        $payment_status = 'due';
+    } elseif ($paid_amount >= $net_total) {
         $change_returned = $paid_amount - $net_total;
         $balance_due = 0;
         $payment_status = 'paid';
@@ -113,9 +118,20 @@ try {
         $payment_status = ($paid_amount > 0) ? 'partial' : 'due';
     }
 
-    // If walk-in customer (id=1), do not allow balance due
-    if ($customer_id === 1 && $balance_due > 0) {
-        throw new Exception("Walk-in customer cannot have balance due. Please select a registered Khata customer or collect full payment.");
+    // Strictly verify customer - Walk-in customers CANNOT have credit, balance due, or partial payment!
+    $stmtCustCheck = $pdo->prepare("SELECT id, name, customer_code FROM customers WHERE id = ?");
+    $stmtCustCheck->execute([$customer_id]);
+    $custInfo = $stmtCustCheck->fetch();
+
+    $isWalkIn = (!$custInfo 
+        || $custInfo['id'] == 1 
+        || $custInfo['customer_code'] === 'CUST-001' 
+        || stripos($custInfo['name'], 'walk-in') !== false
+        || stripos($custInfo['name'], 'walkin') !== false
+    );
+
+    if ($isWalkIn && ($payment_method === 'credit' || $balance_due > 0 || $paid_amount < $net_total)) {
+        throw new Exception("Credit / Khata sales are NOT allowed for Walk-in customers. Walk-in customers must pay the full bill (" . format_currency($net_total) . ") in cash or digital payment.");
     }
 
     // 3. Generate unique invoice number
