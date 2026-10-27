@@ -32,7 +32,7 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
 
 <div class="row g-3">
     <!-- LEFT: Product Search, Category Filter & Product Grid -->
-    <div class="col-12 col-lg-7 col-xl-8" id="posProductsColumn">
+    <div class="col-12 col-lg-7 col-xl-7" id="posProductsColumn">
         <!-- VIEW 1: Main Product Catalogue (Search, Categories & Grid) -->
         <div id="posCatalogueMainView">
             <div class="card border-0 shadow-sm rounded-3 p-2 p-md-3 mb-3">
@@ -117,7 +117,7 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
     </div>
 
     <!-- RIGHT: POS Cart, Customer Selection & Dedicated Checkout Panel -->
-    <div class="col-12 col-lg-5 col-xl-4" id="posCartColumn">
+    <div class="col-12 col-lg-5 col-xl-5" id="posCartColumn">
         <div class="pos-cart-panel shadow-sm">
             <!-- VIEW 1: CART VIEW -->
             <div id="posCartView" class="d-flex flex-column h-100">
@@ -247,15 +247,15 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
                 </div>
 
                 <!-- Cart Table Items -->
-                <div class="pos-cart-items p-2 table-responsive" style="min-height: 220px; max-height: calc(100vh - 460px);">
-                    <table class="table table-sm align-middle mb-0" id="cartTable">
+                <div class="pos-cart-items px-2 py-1" style="min-height: 220px; max-height: calc(100vh - 460px); overflow-x: hidden; overflow-y: auto;">
+                    <table class="table table-sm align-middle mb-0 pos-cart-table" id="cartTable">
                         <thead class="table-light small text-muted">
                             <tr>
-                                <th>Item & Variant</th>
-                                <th style="width: 95px;" class="text-center">Qty</th>
-                                <th style="width: 75px;" class="text-end">Price</th>
-                                <th style="width: 80px;" class="text-end">Total</th>
-                                <th style="width: 30px;"></th>
+                                <th>Item</th>
+                                <th style="width: 76px;" class="text-center">Qty</th>
+                                <th style="width: 58px;" class="text-end">Price</th>
+                                <th style="width: 62px;" class="text-end">Total</th>
+                                <th style="width: 22px;"></th>
                             </tr>
                         </thead>
                         <tbody id="cartTableBody">

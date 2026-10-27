@@ -247,6 +247,26 @@ body {
 .pos-cart-items {
     flex-grow: 1;
     overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Compact POS Cart Table to prevent horizontal scroll & button wrapping */
+.pos-cart-table {
+    table-layout: fixed;
+    width: 100%;
+}
+.pos-cart-table th,
+.pos-cart-table td {
+    padding: 0.3rem 0.15rem !important;
+    vertical-align: middle;
+}
+.pos-cart-table input[type="number"]::-webkit-outer-spin-button,
+.pos-cart-table input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.pos-cart-table input[type="number"] {
+    -moz-appearance: textfield;
 }
 
 /* Color & Size Badges */

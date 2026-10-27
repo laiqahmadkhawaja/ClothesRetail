@@ -325,7 +325,7 @@ function loadProducts(query = '', category_id = 0) {
                 const unitLabel = isFabric ? (p.unit_type || 'm') : 'pcs';
 
                 const col = document.createElement("div");
-                col.className = "col-6 col-sm-6 col-md-4 col-xl-3";
+                col.className = "col-6 col-sm-6 col-md-4 col-xl-4";
                 col.innerHTML = `
                     <div class="pos-product-card p-2 p-md-3 ${isOutOfStock ? 'out-of-stock' : ''}" onclick="selectProductForVariants(${p.id})">
                         <div class="w-100">
@@ -569,46 +569,46 @@ function renderCart() {
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td>
-                <div class="fw-semibold text-dark text-truncate" style="max-width: 140px;" title="${item.product_name}">
+                <div class="fw-semibold text-dark text-truncate" style="font-size: 0.82rem; line-height: 1.25;" title="${item.product_name}">
                     ${isFabric ? '🧵 ' : ''}${item.product_name}
                 </div>
                 <div class="d-flex flex-wrap align-items-center gap-1 mt-1">
-                    <span class="size-badge">${item.size_name}</span>
-                    <span class="color-dot" style="background-color: ${item.color_hex};"></span>
-                    <small class="text-muted" style="font-size: 0.68rem;">${item.color_name}</small>
-                    <span class="badge ${item.pricing_tier === 'wholesale' ? 'bg-success-subtle text-success border border-success' : 'bg-primary-subtle text-primary border'} px-1 py-0" style="font-size: 0.65rem; cursor: pointer;" onclick="toggleItemTier(${index})" title="Toggle Retail / Wholesale rate">
+                    <span class="size-badge py-0 px-1" style="font-size: 0.65rem;">${item.size_name}</span>
+                    <span class="color-dot me-0" style="background-color: ${item.color_hex}; width: 10px; height: 10px;"></span>
+                    <small class="text-muted" style="font-size: 0.65rem;">${item.color_name}</small>
+                    <span class="badge ${item.pricing_tier === 'wholesale' ? 'bg-success-subtle text-success border border-success' : 'bg-primary-subtle text-primary border'} px-1 py-0" style="font-size: 0.6rem; cursor: pointer;" onclick="toggleItemTier(${index})" title="Toggle Retail / Wholesale rate">
                         ${item.pricing_tier === 'wholesale' ? '📦 W-Sale' : '🛒 Retail'}
                     </span>
                 </div>
             </td>
-            <td class="text-center">
+            <td class="text-center" style="width: 76px;">
                 <div class="d-flex flex-column align-items-center">
-                    <div class="input-group input-group-sm justify-content-center" style="width: 105px;">
-                        <button class="btn btn-outline-secondary touch-btn px-1 py-0" onclick="changeQty(${index}, -${isFabric ? 0.5 : 1})">-</button>
-                        <input type="number" step="${isFabric ? 0.25 : 1}" class="form-control form-control-sm text-center px-1 py-0 fw-bold" value="${item.qty}" onchange="changeQtyDirect(${index}, this.value)" style="width: 48px;">
-                        <button class="btn btn-outline-secondary touch-btn px-1 py-0" onclick="changeQty(${index}, ${isFabric ? 0.5 : 1})">+</button>
+                    <div class="input-group input-group-sm flex-nowrap justify-content-center" style="width: 74px;">
+                        <button class="btn btn-outline-secondary px-1 py-0 fw-bold" style="font-size: 0.72rem; line-height: 1; width: 20px;" onclick="changeQty(${index}, -${isFabric ? 0.5 : 1})">-</button>
+                        <input type="number" step="${isFabric ? 0.25 : 1}" class="form-control form-control-sm text-center p-0 fw-bold" value="${item.qty}" onchange="changeQtyDirect(${index}, this.value)" style="font-size: 0.78rem; width: 34px; min-width: 0;">
+                        <button class="btn btn-outline-secondary px-1 py-0 fw-bold" style="font-size: 0.72rem; line-height: 1; width: 20px;" onclick="changeQty(${index}, ${isFabric ? 0.5 : 1})">+</button>
                     </div>
                     <div class="d-flex align-items-center gap-1 mt-1">
                         ${isFabric ? `
-                            <button type="button" class="badge ${item.unit_type === 'suit' ? 'bg-primary text-white' : 'bg-light text-dark border'} border-0 p-1" style="font-size: 0.65rem; cursor: pointer;" onclick="toggleItemUnit(${index})">
-                                ${item.unit_type === 'suit' ? 'Suit (' + item.meters_per_suit + 'm)' : 'Meters'}
+                            <button type="button" class="badge ${item.unit_type === 'suit' ? 'bg-primary text-white' : 'bg-light text-dark border'} border-0 px-1 py-0" style="font-size: 0.6rem; cursor: pointer;" onclick="toggleItemUnit(${index})" title="Toggle Suit / Meters">
+                                ${item.unit_type === 'suit' ? 'Suit(' + item.meters_per_suit + 'm)' : 'Meters'}
                             </button>
                         ` : `
-                            <small class="text-muted" style="font-size: 0.65rem;">${item.unit_type || 'pcs'}</small>
+                            <small class="text-muted" style="font-size: 0.62rem;">${item.unit_type || 'pc'}</small>
                         `}
                     </div>
                 </div>
             </td>
-            <td class="text-end">
-                <input type="number" step="0.01" class="form-control form-control-sm text-end px-1 py-0" value="${item.unit_price}" onchange="changePrice(${index}, this.value)" style="width: 72px; display: inline-block;">
-                <small class="d-block text-muted" style="font-size: 0.65rem;">/${item.unit_type}</small>
+            <td class="text-end" style="width: 58px;">
+                <input type="number" step="0.01" class="form-control form-control-sm text-end p-0 fw-semibold" value="${item.unit_price}" onchange="changePrice(${index}, this.value)" style="width: 54px; font-size: 0.75rem; display: inline-block;">
+                <small class="d-block text-muted" style="font-size: 0.6rem; line-height: 1.1;">/${item.unit_type === 'suit' ? 'suit' : (isFabric ? 'm' : 'pc')}</small>
             </td>
-            <td class="text-end fw-bold text-dark">
-                Rs. ${Math.round(item.total_price).toLocaleString()}
+            <td class="text-end fw-bold text-dark" style="width: 62px; font-size: 0.8rem; white-space: nowrap;">
+                <span class="text-muted small" style="font-size: 0.62rem;">Rs.</span>${Math.round(item.total_price).toLocaleString()}
             </td>
-            <td class="text-center">
-                <button class="btn btn-link text-danger p-0" onclick="removeCartItem(${index})" title="Remove item">
-                    <i class="bi bi-x-circle fs-6"></i>
+            <td class="text-center" style="width: 22px;">
+                <button class="btn btn-link text-danger p-0" onclick="removeCartItem(${index})" title="Remove item" style="line-height: 1;">
+                    <i class="bi bi-x-circle" style="font-size: 0.88rem;"></i>
                 </button>
             </td>
         `;
