@@ -66,16 +66,41 @@ $entries = $stmtLedger->fetchAll();
 
 <style>
 @media print {
-    body { font-size: 11px !important; color: #000 !important; background: #fff !important; }
-    .no-print, nav, .sidebar, footer, .btn, .breadcrumb { display: none !important; }
-    .print-area { border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; }
-    h4 { font-size: 15px !important; margin-bottom: 2px !important; font-weight: bold !important; }
-    h5 { font-size: 13px !important; margin-bottom: 2px !important; font-weight: bold !important; }
-    .fs-6, .fs-5 { font-size: 12px !important; }
-    .badge { border: 1px solid #999 !important; color: #000 !important; background: transparent !important; padding: 2px 4px !important; font-size: 10px !important; }
-    table { font-size: 11px !important; width: 100% !important; border-collapse: collapse !important; }
-    th, td { padding: 4px 6px !important; border: 1px solid #ccc !important; }
-    @page { size: A4; margin: 12mm 15mm; }
+    @page { size: A4 portrait; margin: 10mm; }
+    html, body, #wrapper, #page-content-wrapper, .main-content {
+        height: auto !important;
+        min-height: auto !important;
+        overflow: visible !important;
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        color: #000 !important;
+        font-size: 11px !important;
+    }
+    #sidebar-wrapper, .sidebar-backdrop, .top-navbar, .no-print, nav, .sidebar, footer, .btn, .breadcrumb {
+        display: none !important;
+    }
+    .print-area {
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+    h4 { font-size: 16px !important; margin-bottom: 2px !important; font-weight: bold !important; }
+    h5 { font-size: 14px !important; margin-bottom: 2px !important; font-weight: bold !important; }
+    h6 { font-size: 12px !important; margin-bottom: 2px !important; font-weight: bold !important; }
+    .fs-6, .fs-5 { font-size: 11.5px !important; }
+    .badge { border: 1px solid #777 !important; color: #000 !important; background: transparent !important; padding: 2px 4px !important; font-size: 10px !important; }
+    table { font-size: 11px !important; width: 100% !important; min-width: 100% !important; border-collapse: collapse !important; margin-top: 10px !important; }
+    th, td { padding: 5px 8px !important; border: 1px solid #bbb !important; }
+    thead th { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 </style>
 

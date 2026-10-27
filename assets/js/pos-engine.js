@@ -111,8 +111,19 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 
-    // 5. Open Pay Modal
-    document.getElementById("openPayModalBtn").addEventListener("click", openCheckoutModal);
+    // 5. Open Dedicated Checkout View
+    const openPayModalBtn = document.getElementById("openPayModalBtn");
+    if (openPayModalBtn) {
+        openPayModalBtn.addEventListener("click", openCheckoutView);
+    }
+    const backToCartBtn = document.getElementById("backToCartBtn");
+    if (backToCartBtn) {
+        backToCartBtn.addEventListener("click", closeCheckoutView);
+    }
+    const cancelCheckoutBtn = document.getElementById("cancelCheckoutBtn");
+    if (cancelCheckoutBtn) {
+        cancelCheckoutBtn.addEventListener("click", closeCheckoutView);
+    }
 
     // 6. Payment Method Change
     document.getElementById("checkoutMethodSelect").addEventListener("change", function() {
@@ -132,6 +143,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // 7. Cash Received Inputs
     document.getElementById("cashReceivedInput").addEventListener("input", recalcPaymentDifference);
+    document.getElementById("cashReceivedInput").addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            submitCheckout('thermal');
+        }
+    });
     ['splitCash', 'splitJazzCash', 'splitDigital', 'splitCard'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener("input", recalcPaymentDifference);
@@ -171,7 +188,7 @@ document.addEventListener("DOMContentLoaded", function() {
         openScannerBtn.addEventListener("click", openBarcodeScanner);
     }
 
-    // 12. Global Keyboard Shortcuts: F2 (search), F3 (camera scanner), F4 (hold), F8 (pay)
+    // 12. Global Keyboard Shortcuts: F2 (search), F3 (camera scanner), F4 (hold), F6/F7 (rates), F8 (pay), Esc
     document.addEventListener("keydown", function(e) {
         if (e.key === "F2") {
             e.preventDefault();
@@ -179,7 +196,12 @@ document.addEventListener("DOMContentLoaded", function() {
             searchInput.select();
         } else if (e.key === "F3") {
             e.preventDefault();
-            openBarcodeScanner();
+            const sc = document.getElementById("posCameraScannerContainer");
+            if (sc && sc.classList.contains("scanner-active")) {
+                closeBarcodeScanner();
+            } else {
+                openBarcodeScanner();
+            }
         } else if (e.key === "F4") {
             e.preventDefault();
             holdCurrentSale();
@@ -191,7 +213,25 @@ document.addEventListener("DOMContentLoaded", function() {
             setGlobalPricingTier('wholesale');
         } else if (e.key === "F8") {
             e.preventDefault();
-            openCheckoutModal();
+            const checkoutView = document.getElementById("posCheckoutView");
+            if (checkoutView && checkoutView.style.display !== "none" && !checkoutView.classList.contains("d-none")) {
+                submitCheckout('thermal');
+            } else {
+                openCheckoutView();
+            }
+        } else if (e.key === "Escape") {
+            const sc = document.getElementById("posCameraScannerContainer");
+            if (sc && sc.classList.contains("scanner-active")) {
+                e.preventDefault();
+                closeBarcodeScanner();
+                return;
+            }
+            const checkoutView = document.getElementById("posCheckoutView");
+            if (checkoutView && checkoutView.style.display !== "none" && !checkoutView.classList.contains("d-none")) {
+                e.preventDefault();
+                closeCheckoutView();
+                return;
+            }
         }
     });
 
@@ -260,27 +300,27 @@ function loadProducts(query = '', category_id = 0) {
                 const unitLabel = isFabric ? (p.unit_type || 'm') : 'pcs';
 
                 const col = document.createElement("div");
-                col.className = "col-6 col-sm-4 col-md-3 col-xl-2";
+                col.className = "col-6 col-sm-6 col-md-4 col-xl-3";
                 col.innerHTML = `
-                    <div class="pos-product-card p-2 ${isOutOfStock ? 'out-of-stock' : ''}" onclick="selectProductForVariants(${p.id})">
-                        <div>
+                    <div class="pos-product-card p-2 p-md-3 ${isOutOfStock ? 'out-of-stock' : ''}" onclick="selectProductForVariants(${p.id})">
+                        <div class="w-100">
                             <div class="d-flex justify-content-between align-items-center mb-1">
-                                <span class="badge bg-light text-dark border" style="font-size: 0.65rem;">${p.product_code}</span>
-                                <span class="badge ${totalStock > 5 ? 'bg-success-subtle text-success' : (totalStock > 0 ? 'bg-warning-subtle text-warning' : 'bg-danger-subtle text-danger')}" style="font-size: 0.65rem;">
+                                <span class="badge bg-light text-dark border px-2 py-1" style="font-size: 0.68rem;">${p.product_code}</span>
+                                <span class="badge ${totalStock > 5 ? 'bg-success-subtle text-success' : (totalStock > 0 ? 'bg-warning-subtle text-warning' : 'bg-danger-subtle text-danger')} px-2 py-1 fw-bold" style="font-size: 0.68rem;">
                                     ${parseFloat(totalStock.toFixed(2))} ${unitLabel}
                                 </span>
                             </div>
-                            <div class="fw-bold text-dark small text-truncate" title="${p.name}">
+                            <div class="fw-bold text-dark mt-1" title="${p.name}" style="font-size: 0.88rem; line-height: 1.25; min-height: 2.5em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;">
                                 ${isFabric ? '🧵 ' : ''}${p.name}
                             </div>
-                            <div class="text-muted" style="font-size: 0.7rem;">${p.category_name || ''} &bull; ${p.brand_name || ''}</div>
+                            <div class="text-muted text-truncate" style="font-size: 0.72rem;">${p.category_name || ''}${p.brand_name ? ' &bull; ' + p.brand_name : ''}</div>
                         </div>
-                        <div class="mt-2 pt-1 border-top">
+                        <div class="mt-2 pt-2 border-top w-100">
                             <div class="d-flex justify-content-between align-items-center">
-                                <strong class="text-primary small">${priceLabel}</strong>
-                                ${isFabric ? `<span class="badge bg-purple-subtle text-purple" style="font-size: 0.6rem; background-color: #f3e8ff; color: #6b21a8;">Thaan</span>` : '<i class="bi bi-grid-3x3-gap-fill text-muted small"></i>'}
+                                <strong class="text-primary fs-6">${priceLabel}</strong>
+                                ${isFabric ? `<span class="badge" style="font-size: 0.65rem; background-color: #f3e8ff; color: #6b21a8; font-weight: 600;">Thaan</span>` : '<span class="badge bg-light text-muted border" style="font-size: 0.65rem;">Garment</span>'}
                             </div>
-                            ${minWholesale > 0 ? `<div class="text-success" style="font-size: 0.68rem;">W-Sale: Rs. ${minWholesale.toLocaleString()}</div>` : ''}
+                            ${minWholesale > 0 ? `<div class="text-success fw-semibold mt-1" style="font-size: 0.72rem;"><i class="bi bi-box-seam me-1"></i>W-Sale: Rs. ${minWholesale.toLocaleString()}</div>` : ''}
                         </div>
                     </div>
                 `;
@@ -635,8 +675,8 @@ function getCartNetTotal() {
     return net < 0 ? 0 : net;
 }
 
-// Open Checkout Modal
-function openCheckoutModal() {
+// Open Dedicated Inline Checkout View
+function openCheckoutView() {
     if (cart.length === 0) {
         showToast("Cart is empty! Add products before checkout.", "warning");
         return;
@@ -645,10 +685,54 @@ function openCheckoutModal() {
     const net = getCartNetTotal();
     document.getElementById("modalNetPayable").innerText = `Rs. ${net.toLocaleString()}`;
     document.getElementById("cashReceivedInput").value = net; // default exact cash
+    
+    // Customer summary
+    const custSelect = document.getElementById("posCustomerSelect");
+    const custName = custSelect.options[custSelect.selectedIndex]?.text || "Walk-in";
+    const custSummaryEl = document.getElementById("checkoutCustomerSummary");
+    if (custSummaryEl) {
+        custSummaryEl.innerText = `Customer: ${custName}`;
+    }
+
+    const countBadge = document.getElementById("checkoutItemCountBadge");
+    if (countBadge) {
+        let totalItems = cart.reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0);
+        countBadge.innerText = `${totalItems} Qty in Cart`;
+    }
+
     recalcPaymentDifference();
 
-    const modal = new bootstrap.Modal(document.getElementById("checkoutModal"));
-    modal.show();
+    // Toggle views in posCartColumn
+    const cartView = document.getElementById("posCartView");
+    const checkoutView = document.getElementById("posCheckoutView");
+    if (cartView && checkoutView) {
+        cartView.style.setProperty("display", "none", "important");
+        checkoutView.style.setProperty("display", "flex", "important");
+    }
+
+    // Auto-focus cash input
+    setTimeout(() => {
+        const cashInp = document.getElementById("cashReceivedInput");
+        if (cashInp) {
+            cashInp.focus();
+            cashInp.select();
+        }
+    }, 100);
+}
+
+// Close Dedicated Inline Checkout View and Return to Cart
+function closeCheckoutView() {
+    const cartView = document.getElementById("posCartView");
+    const checkoutView = document.getElementById("posCheckoutView");
+    if (cartView && checkoutView) {
+        checkoutView.style.setProperty("display", "none", "important");
+        cartView.style.setProperty("display", "flex", "important");
+    }
+}
+
+// Backward compatibility alias
+function openCheckoutModal() {
+    openCheckoutView();
 }
 
 // Recalculate Cash / Change / Due
@@ -746,7 +830,7 @@ function submitCheckout(printType = 'thermal') {
             return;
         }
 
-        bootstrap.Modal.getInstance(document.getElementById("checkoutModal")).hide();
+        closeCheckoutView();
         cart = [];
         renderCart();
         document.getElementById("cartBillDiscount").value = 0;
@@ -960,12 +1044,18 @@ let maxHardwareZoom = 4;
 let lastScanTimestamp = 0;
 
 function initBarcodeScannerListeners() {
-    const modalEl = document.getElementById("barcodeScannerModal");
-    if (!modalEl) return;
+    const scannerContainer = document.getElementById("posCameraScannerContainer");
+    if (!scannerContainer) return;
 
     scannerVideo = document.getElementById("scannerVideo");
     scannerCanvas = document.getElementById("scannerCanvas");
     if (scannerCanvas) scannerCtx = scannerCanvas.getContext("2d", { willReadFrequently: true });
+
+    // Close button
+    const closeBtn = document.getElementById("closeScannerBtn");
+    if (closeBtn) {
+        closeBtn.addEventListener("click", closeBarcodeScanner);
+    }
 
     // Initialize native BarcodeDetector if supported
     if ('BarcodeDetector' in window) {
@@ -986,10 +1076,6 @@ function initBarcodeScannerListeners() {
             zxingReader = null;
         }
     }
-
-    // Modal lifecycle events
-    modalEl.addEventListener("shown.bs.modal", startScannerCamera);
-    modalEl.addEventListener("hidden.bs.modal", stopScannerStream);
 
     // Zoom Buttons
     document.querySelectorAll(".zoom-btn").forEach(btn => {
@@ -1037,18 +1123,36 @@ function initBarcodeScannerListeners() {
     }
 }
 
+// Open Live Camera Barcode Scanner with Smooth Animation above Cart
 function openBarcodeScanner() {
-    const modalEl = document.getElementById("barcodeScannerModal");
-    if (!modalEl) return;
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-    modal.show();
+    const container = document.getElementById("posCameraScannerContainer");
+    if (!container) return;
+
+    // Toggle behavior
+    if (container.classList.contains("scanner-active")) {
+        closeBarcodeScanner();
+        return;
+    }
+
+    container.style.display = "block";
+    requestAnimationFrame(() => {
+        container.classList.add("scanner-active");
+    });
+    startScannerCamera();
 }
 
+// Close Live Camera Barcode Scanner with Collapse Animation
 function closeBarcodeScanner() {
-    const modalEl = document.getElementById("barcodeScannerModal");
-    if (!modalEl) return;
-    const modal = bootstrap.Modal.getInstance(modalEl);
-    if (modal) modal.hide();
+    const container = document.getElementById("posCameraScannerContainer");
+    if (!container) return;
+
+    container.classList.remove("scanner-active");
+    stopScannerStream();
+    setTimeout(() => {
+        if (!container.classList.contains("scanner-active")) {
+            container.style.display = "none";
+        }
+    }, 350);
 }
 
 function startScannerCamera() {

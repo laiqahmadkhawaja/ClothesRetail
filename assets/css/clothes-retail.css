@@ -217,6 +217,8 @@ body {
     cursor: pointer;
     transition: all 0.2s ease;
     height: 100%;
+    width: 100%;
+    min-height: 135px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -449,6 +451,22 @@ body {
 
 /* Printable Formats */
 @media print {
+    html, body, #wrapper, #page-content-wrapper, .main-content {
+        height: auto !important;
+        min-height: auto !important;
+        overflow: visible !important;
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+    }
+    #sidebar-wrapper, .sidebar-backdrop, .top-navbar, .no-print,
+    .mobile-bottom-nav, .mobile-cart-sticky-bar {
+        display: none !important;
+    }
     body * {
         visibility: hidden;
     }
@@ -456,15 +474,13 @@ body {
         visibility: visible;
     }
     .print-area {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-    }
-    .no-print,
-    .mobile-bottom-nav,
-    .mobile-cart-sticky-bar {
-        display: none !important;
+        position: static !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
 }
 
@@ -490,6 +506,26 @@ body {
 /* ========================================================
    LIVE CAMERA BARCODE SCANNER (AUTO-ZOOM & ALIGNMENT)
    ======================================================== */
+.scanner-inline-container {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+}
+.scanner-inline-container.scanner-active {
+    max-height: 420px;
+    opacity: 1;
+}
+.scanner-inline-container .scanner-viewport-wrapper {
+    height: 195px;
+    border-radius: 8px;
+}
+.scanner-inline-container .scanner-reticle {
+    width: 85%;
+    max-width: 280px;
+    height: 120px;
+}
+
 .scanner-viewport-wrapper {
     position: relative;
     width: 100%;
