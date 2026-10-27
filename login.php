@@ -84,9 +84,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="p-4 p-sm-5">
         <?php if (!empty($error)): ?>
-            <div class="alert alert-danger py-2 small mb-4" role="alert">
+            <div id="loginAlert" class="alert alert-danger alert-dismissible fade show py-2 small mb-4 auto-dismiss-alert" role="alert">
                 <i class="bi bi-exclamation-circle-fill me-1"></i> <?= htmlspecialchars($error) ?>
+                <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
             </div>
+            <script>
+            setTimeout(function() {
+                var a = document.getElementById('loginAlert');
+                if (a) {
+                    a.style.transition = 'opacity 0.4s ease';
+                    a.style.opacity = '0';
+                    setTimeout(function() { if (a && a.parentNode) a.parentNode.removeChild(a); }, 400);
+                }
+            }, 5000);
+            </script>
         <?php endif; ?>
 
         <form method="POST" action="login.php">

@@ -68,31 +68,54 @@ function payment_badge($method) {
 
 function render_alerts() {
     $output = '';
+    $hasAlert = false;
     if (isset($_GET['success'])) {
-        $output .= '<div class="alert alert-success alert-dismissible fade show" role="alert">
+        $output .= '<div class="alert alert-success alert-dismissible fade show auto-dismiss-alert" role="alert">
             <i class="bi bi-check-circle-fill me-2"></i> ' . sanitize($_GET['success']) . '
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>';
+        $hasAlert = true;
     }
     if (isset($_GET['error'])) {
-        $output .= '<div class="alert alert-danger alert-dismissible fade show" role="alert">
+        $output .= '<div class="alert alert-danger alert-dismissible fade show auto-dismiss-alert" role="alert">
             <i class="bi bi-exclamation-triangle-fill me-2"></i> ' . sanitize($_GET['error']) . '
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>';
+        $hasAlert = true;
     }
     if (isset($_SESSION['flash_success'])) {
-        $output .= '<div class="alert alert-success alert-dismissible fade show" role="alert">
+        $output .= '<div class="alert alert-success alert-dismissible fade show auto-dismiss-alert" role="alert">
             <i class="bi bi-check-circle-fill me-2"></i> ' . sanitize($_SESSION['flash_success']) . '
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>';
         unset($_SESSION['flash_success']);
+        $hasAlert = true;
     }
     if (isset($_SESSION['flash_error'])) {
-        $output .= '<div class="alert alert-danger alert-dismissible fade show" role="alert">
+        $output .= '<div class="alert alert-danger alert-dismissible fade show auto-dismiss-alert" role="alert">
             <i class="bi bi-exclamation-triangle-fill me-2"></i> ' . sanitize($_SESSION['flash_error']) . '
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>';
         unset($_SESSION['flash_error']);
+        $hasAlert = true;
     }
+
+    if ($hasAlert) {
+        $output .= '<script>
+        setTimeout(function() {
+            document.querySelectorAll(".auto-dismiss-alert").forEach(function(el) {
+                if (typeof bootstrap !== "undefined" && bootstrap.Alert) {
+                    try {
+                        var inst = bootstrap.Alert.getOrCreateInstance(el);
+                        if (inst) { inst.close(); return; }
+                    } catch (e) {}
+                }
+                el.classList.remove("show");
+                setTimeout(function() { el.remove(); }, 350);
+            });
+        }, 5000);
+        </script>';
+    }
+
     return $output;
 }

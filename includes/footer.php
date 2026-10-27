@@ -84,6 +84,26 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
     });
+
+    // Auto-dismiss all flash alerts and dismissible alerts after 5 seconds (5000ms)
+    setTimeout(function() {
+        const alerts = document.querySelectorAll('.alert.alert-dismissible, .auto-dismiss-alert');
+        alerts.forEach(function(el) {
+            try {
+                if (typeof bootstrap !== 'undefined' && bootstrap.Alert) {
+                    const bsAlert = bootstrap.Alert.getOrCreateInstance(el);
+                    if (bsAlert) {
+                        bsAlert.close();
+                        return;
+                    }
+                }
+            } catch (e) {}
+            el.classList.remove('show');
+            setTimeout(function() {
+                if (el.parentNode) el.parentNode.removeChild(el);
+            }, 350);
+        });
+    }, 5000);
 });
 
 // Toast notification trigger helper
