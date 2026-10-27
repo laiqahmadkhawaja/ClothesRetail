@@ -36,35 +36,35 @@ $tax_percent = floatval(get_setting($pdo, 'tax_percent', '0'));
         <!-- VIEW 1: Main Product Catalogue (Search, Categories & Grid) -->
         <div id="posCatalogueMainView">
             <div class="card border-0 shadow-sm rounded-3 p-2 p-md-3 mb-3">
-                <div class="row g-2 align-items-center">
+                <div class="row g-2 align-items-stretch">
                     <!-- Barcode & Product Search Input with Camera Scanner Button -->
-                    <div class="col-12 col-md-8">
-                        <div class="input-group">
+                    <div class="col-12 col-md-7 col-xl-8">
+                        <div class="input-group h-100">
                             <span class="input-group-text bg-white border-end-0 text-primary">
                                 <i class="bi bi-upc-scan fs-5"></i>
                             </span>
-                            <input type="text" id="posSearchInput" class="form-control border-start-0 ps-0 form-control-lg" 
-                                   placeholder="Scan Barcode (Enter) or Search Garment, Code, Brand... [F2]" autofocus autocomplete="off">
+                            <input type="text" id="posSearchInput" class="form-control border-start-0 ps-0" 
+                                   placeholder="Scan Barcode or Search Garment... [F2]" autofocus autocomplete="off">
                             <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" title="Clear Search">
                                 <i class="bi bi-x-lg"></i>
                             </button>
-                            <button class="btn btn-primary px-3 d-flex align-items-center gap-1 shadow-sm" type="button" id="openScannerBtn" title="Scan Barcode via Camera [F3]">
-                                <i class="bi bi-camera-fill fs-5"></i>
-                                <span class="d-none d-sm-inline fw-semibold">Scan</span>
+                            <button class="btn btn-primary px-3 d-flex align-items-center gap-1 shadow-sm text-nowrap" type="button" id="openScannerBtn" title="Scan Barcode via Camera [F3]">
+                                <i class="bi bi-camera-fill"></i>
+                                <span class="fw-semibold">Scan</span>
                             </button>
                         </div>
                     </div>
 
                     <!-- Hold & Resume Button -->
-                    <div class="col-6 col-md-2">
-                        <button class="btn btn-warning w-100 py-2 d-flex align-items-center justify-content-center gap-1" id="holdSaleBtn" title="Hold Current Sale [F4]">
-                            <i class="bi bi-pause-circle"></i> Hold
-                        </button>
-                    </div>
-                    <div class="col-6 col-md-2">
-                        <button class="btn btn-outline-dark w-100 py-2 d-flex align-items-center justify-content-center gap-1" id="resumeSaleBtn" data-bs-toggle="modal" data-bs-target="#heldSalesModal">
-                            <i class="bi bi-collection"></i> Held (<span id="heldCount">0</span>)
-                        </button>
+                    <div class="col-12 col-md-5 col-xl-4">
+                        <div class="d-flex gap-2 h-100">
+                            <button class="btn btn-warning flex-fill d-flex align-items-center justify-content-center gap-1 text-nowrap fw-semibold shadow-sm py-2" id="holdSaleBtn" title="Hold Current Sale [F4]">
+                                <i class="bi bi-pause-circle"></i> <span>Hold</span>
+                            </button>
+                            <button class="btn btn-outline-dark flex-fill d-flex align-items-center justify-content-center gap-1 text-nowrap fw-semibold shadow-sm py-2" id="resumeSaleBtn" data-bs-toggle="modal" data-bs-target="#heldSalesModal" title="View Held Sales">
+                                <i class="bi bi-collection"></i> <span>Held</span> <span class="badge bg-dark text-white rounded-pill px-2 ms-1" id="heldCount">0</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
