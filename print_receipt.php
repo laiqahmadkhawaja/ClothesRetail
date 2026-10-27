@@ -1,5 +1,5 @@
 <?php
-// print_receipt.php - Thermal 80mm / 58mm Receipt View
+// print_receipt.php - High-Clarity Thermal 58mm / 80mm Receipt View
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/helpers.php';
@@ -33,148 +33,289 @@ $stmtItems->execute([$sale_id]);
 $items = $stmtItems->fetchAll();
 
 $settings = get_settings($pdo);
+$defaultPaper = $_GET['paper'] ?? $settings['thermal_paper_width'] ?? '58mm';
+$defaultPaper = in_array($defaultPaper, ['58mm', '80mm']) ? $defaultPaper : '58mm';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Receipt #<?= htmlspecialchars($sale['invoice_number']) ?></title>
     <style>
         @page {
             size: auto;
-            margin: 0;
+            margin: 0mm;
+        }
+        * {
+            box-sizing: border-box;
+            color: #000 !important;
+            font-weight: 700 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
         body {
-            font-family: 'Courier New', Courier, 'Segoe UI', Tahoma, Arial, monospace;
-            font-size: 12.5px;
-            font-weight: bold;
-            color: #000;
-            background: #fff;
+            /* Pure clean Sans-Serif font produces sharp, non-blurry print on thermal heads */
+            font-family: Arial, "Helvetica Neue", Helvetica, "Segoe UI", Roboto, Tahoma, sans-serif;
+            background: #e2e8f0;
             margin: 0;
-            padding: 10px;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
+            padding: 16px 8px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: geometricPrecision;
         }
+
+        /* Screen Preview Card */
         .receipt-container {
-            width: 78mm;
+            background: #ffffff;
             margin: 0 auto;
-            font-weight: bold;
-            color: #000;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+            padding: 12px 10px;
+            border-radius: 4px;
         }
-        /* All thermal text rendered bold as requested to prevent faint printing */
-        .receipt-container,
-        .receipt-container * {
-            font-weight: bold !important;
-            color: #000 !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
+
+        /* 58mm (2-inch roll) - Printable width ~48mm */
+        .receipt-container.paper-58mm {
+            width: 48mm;
+            max-width: 48mm;
+            padding: 8px 4px;
+            font-size: 10.5px;
+            line-height: 1.3;
         }
-        .text-center { text-align: center; }
-        .text-end { text-align: right; }
-        .fw-bold { font-weight: bold; }
-        .border-top { border-top: 1.5px dashed #000; }
-        .border-bottom { border-bottom: 1.5px dashed #000; }
-        .my-1 { margin-top: 4px; margin-bottom: 4px; }
-        .my-2 { margin-top: 7px; margin-bottom: 7px; }
-        .py-1 { padding-top: 4px; padding-bottom: 4px; }
-        .shop-title {
-            font-size: 19px;
+        .paper-58mm .shop-title {
+            font-size: 15px;
             line-height: 1.2;
-            text-transform: uppercase;
-            margin: 0 0 3px 0;
+            letter-spacing: 0.2px;
         }
-        .sub-header-text {
-            font-size: 11.5px;
+        .paper-58mm .sub-header-text {
+            font-size: 9.5px;
+            line-height: 1.25;
+        }
+        .paper-58mm .meta-text {
+            font-size: 10px;
             line-height: 1.35;
         }
-        .meta-text {
+        .paper-58mm table {
+            font-size: 10px;
+        }
+        .paper-58mm .item-name {
+            font-size: 11.5px;
+            line-height: 1.25;
+            padding-top: 4px;
+        }
+        .paper-58mm .item-details {
+            font-size: 9.5px;
+            padding-left: 2px;
+        }
+        .paper-58mm .item-values {
+            font-size: 10.5px;
+        }
+        .paper-58mm .summary-row {
+            font-size: 10.5px;
+            line-height: 1.35;
+        }
+        .paper-58mm .net-total-row {
+            font-size: 14.5px;
+            line-height: 1.25;
+            padding: 4px 0;
+            margin: 4px 0;
+        }
+        .paper-58mm .footer-text {
+            font-size: 9.5px;
+            line-height: 1.3;
+        }
+        .paper-58mm .branding-text {
+            font-size: 8.5px;
+        }
+
+        /* 80mm (3-inch roll) - Printable width ~72mm */
+        .receipt-container.paper-80mm {
+            width: 72mm;
+            max-width: 72mm;
+            padding: 12px 8px;
             font-size: 12px;
+            line-height: 1.35;
+        }
+        .paper-80mm .shop-title {
+            font-size: 18.5px;
+            line-height: 1.2;
+            letter-spacing: 0.3px;
+        }
+        .paper-80mm .sub-header-text {
+            font-size: 11px;
+            line-height: 1.3;
+        }
+        .paper-80mm .meta-text {
+            font-size: 11.5px;
             line-height: 1.4;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
+        .paper-80mm table {
+            font-size: 11.5px;
         }
-        th, td {
-            padding: 3px 0;
-        }
-        .item-name {
-            font-size: 13.5px;
+        .paper-80mm .item-name {
+            font-size: 13px;
             line-height: 1.3;
             padding-top: 5px;
         }
-        .item-details {
-            font-size: 11px;
-            padding-left: 6px;
+        .paper-80mm .item-details {
+            font-size: 10.5px;
+            padding-left: 4px;
         }
-        .item-values {
-            font-size: 12.5px;
+        .paper-80mm .item-values {
+            font-size: 11.5px;
         }
-        .summary-row {
-            font-size: 12.5px;
+        .paper-80mm .summary-row {
+            font-size: 12px;
             line-height: 1.4;
-            display: flex;
-            justify-content: space-between;
         }
-        .net-total-row {
-            font-size: 17px;
+        .paper-80mm .net-total-row {
+            font-size: 16.5px;
             line-height: 1.3;
-            display: flex;
-            justify-content: space-between;
-            border-top: 1.5px dashed #000;
-            border-bottom: 1.5px dashed #000;
             padding: 5px 0;
             margin: 5px 0;
         }
-        .footer-text {
-            font-size: 11.5px;
+        .paper-80mm .footer-text {
+            font-size: 11px;
             line-height: 1.35;
         }
-        .branding-text {
-            font-size: 10px;
-            margin-top: 4px;
+        .paper-80mm .branding-text {
+            font-size: 9.5px;
         }
+
+        /* Shared Element Styles */
+        .text-center { text-align: center; }
+        .text-end { text-align: right; }
+        .border-top { border-top: 1.5px dashed #000; }
+        .border-bottom { border-bottom: 1.5px dashed #000; }
+        .my-1 { margin-top: 3px; margin-bottom: 3px; }
+        .my-2 { margin-top: 6px; margin-bottom: 6px; }
+        .py-1 { padding-top: 3px; padding-bottom: 3px; }
+
+        .shop-title {
+            text-transform: uppercase;
+            margin: 0 0 2px 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        th, td {
+            padding: 2.5px 1px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        .col-item { width: 44%; text-align: left; }
+        .col-qty { width: 14%; text-align: center; }
+        .col-price { width: 20%; text-align: right; }
+        .col-total { width: 22%; text-align: right; }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .net-total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1.5px dashed #000;
+            border-bottom: 1.5px dashed #000;
+        }
+
+        /* Toolbar */
         .no-print {
             text-align: center;
-            margin-bottom: 15px;
+            margin-bottom: 14px;
         }
-        .btn {
-            padding: 6px 14px;
-            border: 1px solid #333;
-            background: #f0f0f0;
-            cursor: pointer;
-            font-size: 13px;
+        .toolbar-box {
+            display: inline-block;
+            background: #ffffff;
+            padding: 10px 14px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .roll-selector {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .btn-roll {
+            background: #f1f5f9;
+            border: 1.5px solid #cbd5e1;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 700;
             border-radius: 4px;
+            cursor: pointer;
+            color: #334155 !important;
         }
+        .btn-roll.active {
+            background: #0284c7;
+            border-color: #0284c7;
+            color: #ffffff !important;
+        }
+        .action-btns {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+        .btn-action {
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 4px;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-print {
+            background: #16a34a;
+            color: #ffffff !important;
+        }
+        .btn-close-win {
+            background: #64748b;
+            color: #ffffff !important;
+        }
+
         @media print {
-            @page {
-                size: auto;
-                margin: 0;
-            }
             body {
-                padding: 0;
-                margin: 0;
-                background: #fff;
+                background: #ffffff !important;
+                margin: 0 !important;
+                padding: 0 !important;
             }
             .receipt-container {
-                width: 100%;
-                max-width: 78mm;
-                margin: 0 auto;
-                padding: 2mm 3mm;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                margin: 0 !important;
+                padding: 0 1mm !important;
             }
-            .no-print { display: none !important; }
+            .no-print {
+                display: none !important;
+            }
         }
     </style>
 </head>
-<body <?= $autoprint ? 'onload="window.print()"' : '' ?>>
+<body>
 
 <div class="no-print">
-    <button class="btn" onclick="window.print()">🖨️ Print Receipt</button>
-    <button class="btn" onclick="window.close()">✖ Close Window</button>
+    <div class="toolbar-box">
+        <div class="roll-selector">
+            <span style="font-size: 11px; margin-right: 4px;">Paper Roll:</span>
+            <button type="button" class="btn-roll" id="roll58" onclick="selectPaper('58mm')">58mm (2" Mini)</button>
+            <button type="button" class="btn-roll" id="roll80" onclick="selectPaper('80mm')">80mm (3" Standard)</button>
+        </div>
+        <div class="action-btns">
+            <button type="button" class="btn-action btn-print" onclick="window.print()">🖨️ Print Receipt</button>
+            <button type="button" class="btn-action btn-close-win" onclick="window.close()">✖ Close Window</button>
+        </div>
+    </div>
 </div>
 
-<div class="receipt-container">
+<div class="receipt-container paper-<?= htmlspecialchars($defaultPaper) ?>" id="receiptContainer">
+    <!-- Store Header -->
     <div class="text-center">
         <h2 class="shop-title"><?= htmlspecialchars($settings['shop_name'] ?? 'Clothes Retail') ?></h2>
         <?php if (!empty($settings['tagline'])): ?>
@@ -188,6 +329,7 @@ $settings = get_settings($pdo);
         <?php endif; ?>
     </div>
 
+    <!-- Invoice Meta Data -->
     <div class="border-top border-bottom my-2 py-1 meta-text">
         <div style="display: flex; justify-content: space-between;">
             <span>Inv: <?= htmlspecialchars($sale['invoice_number']) ?></span>
@@ -195,17 +337,18 @@ $settings = get_settings($pdo);
         </div>
         <div style="display: flex; justify-content: space-between;">
             <span>Cashier: <?= htmlspecialchars($sale['cashier_name'] ?? 'POS') ?></span>
-            <span>Customer: <?= htmlspecialchars($sale['customer_name'] ?? 'Walk-in') ?></span>
+            <span>Cust: <?= htmlspecialchars($sale['customer_name'] ?? 'Walk-in') ?></span>
         </div>
     </div>
 
+    <!-- Items Table -->
     <table>
         <thead>
-            <tr class="border-bottom" style="font-size: 12px;">
-                <th style="text-align: left;">Item [Size/Col]</th>
-                <th style="text-align: center;">Qty</th>
-                <th style="text-align: right;">Price</th>
-                <th style="text-align: right;">Total</th>
+            <tr class="border-bottom">
+                <th class="col-item">Item</th>
+                <th class="col-qty">Qty</th>
+                <th class="col-price">Price</th>
+                <th class="col-total">Total</th>
             </tr>
         </thead>
         <tbody>
@@ -216,17 +359,18 @@ $settings = get_settings($pdo);
                     </td>
                 </tr>
                 <tr class="border-bottom item-values">
-                    <td class="item-details">
-                        [<?= htmlspecialchars($it['size_name']) ?> / <?= htmlspecialchars($it['color_name']) ?>]
+                    <td class="col-item item-details">
+                        [<?= htmlspecialchars($it['size_name']) ?>/<?= htmlspecialchars($it['color_name']) ?>]
                     </td>
-                    <td style="text-align: center;"><?= rtrim(rtrim(number_format($it['quantity'], 2), '0'), '.') ?><?= !empty($it['unit_type']) && $it['unit_type'] !== 'piece' ? ' ' . $it['unit_type'] : '' ?></td>
-                    <td style="text-align: right;"><?= number_format($it['unit_price'], 0) ?></td>
-                    <td style="text-align: right;"><?= number_format($it['total_price'], 0) ?></td>
+                    <td class="col-qty"><?= rtrim(rtrim(number_format($it['quantity'], 2), '0'), '.') ?><?= !empty($it['unit_type']) && $it['unit_type'] !== 'piece' ? ' ' . $it['unit_type'] : '' ?></td>
+                    <td class="col-price"><?= number_format($it['unit_price'], 0) ?></td>
+                    <td class="col-total"><?= number_format($it['total_price'], 0) ?></td>
                 </tr>
             <?php endforeach; ?>
         </tbody>
     </table>
 
+    <!-- Billing Summary -->
     <div class="my-2">
         <div class="summary-row">
             <span>Subtotal:</span>
@@ -235,7 +379,7 @@ $settings = get_settings($pdo);
 
         <?php if ($sale['bill_discount'] > 0): ?>
         <div class="summary-row">
-            <span>Bill Discount:</span>
+            <span>Discount:</span>
             <span>-<?= format_currency($sale['bill_discount']) ?></span>
         </div>
         <?php endif; ?>
@@ -253,47 +397,97 @@ $settings = get_settings($pdo);
         </div>
 
         <div class="summary-row">
-            <span>Paid Amount (<?= ucfirst($sale['payment_method']) ?>):</span>
+            <span>Paid (<?= ucfirst($sale['payment_method']) ?>):</span>
             <span><?= format_currency($sale['paid_amount']) ?></span>
         </div>
 
         <?php if ($sale['change_returned'] > 0): ?>
         <div class="summary-row">
-            <span>Change Returned:</span>
+            <span>Change:</span>
             <span><?= format_currency($sale['change_returned']) ?></span>
         </div>
         <?php endif; ?>
 
         <?php if ($sale['balance_due'] > 0): ?>
         <div class="summary-row">
-            <span>Khata Balance Due:</span>
+            <span>Khata Due:</span>
             <span><?= format_currency($sale['balance_due']) ?></span>
         </div>
         <?php if ($sale['customer_id'] > 1): ?>
-        <div class="summary-row" style="font-size: 11.5px;">
-            <span>Total Khata Balance:</span>
+        <div class="summary-row">
+            <span>Total Khata Bal:</span>
             <span><?= format_currency($sale['customer_khata_balance']) ?></span>
         </div>
         <?php endif; ?>
         <?php endif; ?>
     </div>
 
+    <!-- Receipt Footer & Barcode -->
     <div class="text-center border-top pt-2 my-2 footer-text">
         <?= nl2br(htmlspecialchars($settings['footer_text'] ?? 'Thank you for shopping with us!')) ?>
-        <div style="margin-top: 8px;">
+        <div style="margin-top: 6px;">
             <svg id="receiptBarcode"></svg>
         </div>
-        <div class="branding-text">Software by ClothesRetail ERP</div>
+        <div class="branding-text" style="margin-top: 3px;">Software by ClothesRetail ERP</div>
     </div>
 </div>
 
 <script src="assets/js/JsBarcode.all.min.js"></script>
 <script>
-JsBarcode("#receiptBarcode", "<?= $sale['invoice_number'] ?>", {
-    format: "CODE128",
-    width: 1.5,
-    height: 35,
-    displayValue: false
+let currentPaper = "<?= $defaultPaper ?>";
+
+function renderBarcode(size) {
+    const is58 = size === '58mm';
+    try {
+        JsBarcode("#receiptBarcode", "<?= $sale['invoice_number'] ?>", {
+            format: "CODE128",
+            width: is58 ? 1.15 : 1.5,
+            height: is58 ? 26 : 34,
+            displayValue: false,
+            margin: 0
+        });
+    } catch(e) {}
+}
+
+function selectPaper(size, skipStore) {
+    currentPaper = size;
+    const rc = document.getElementById('receiptContainer');
+    if (rc) {
+        rc.classList.remove('paper-58mm', 'paper-80mm');
+        rc.classList.add('paper-' + size);
+    }
+
+    const r58 = document.getElementById('roll58');
+    const r80 = document.getElementById('roll80');
+    if (r58 && r80) {
+        r58.classList.toggle('active', size === '58mm');
+        r80.classList.toggle('active', size === '80mm');
+    }
+
+    if (!skipStore) {
+        try {
+            localStorage.setItem('thermal_paper_roll', size);
+        } catch(e) {}
+    }
+
+    renderBarcode(size);
+}
+
+// On load: restore paper choice from localStorage if present
+document.addEventListener("DOMContentLoaded", function() {
+    let saved = null;
+    try {
+        saved = localStorage.getItem('thermal_paper_roll');
+    } catch(e) {}
+
+    const activeSize = (saved === '58mm' || saved === '80mm') ? saved : currentPaper;
+    selectPaper(activeSize, true);
+
+    <?php if ($autoprint): ?>
+    setTimeout(function() {
+        window.print();
+    }, 400);
+    <?php endif; ?>
 });
 </script>
 

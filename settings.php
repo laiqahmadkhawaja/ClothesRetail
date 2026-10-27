@@ -39,7 +39,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'backup_db') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_settings') {
     $fields = [
         'shop_name', 'tagline', 'phone', 'email', 'address', 'currency',
-        'invoice_prefix', 'tax_percent', 'footer_text', 'low_stock_threshold', 'return_validity_days'
+        'invoice_prefix', 'tax_percent', 'footer_text', 'low_stock_threshold', 'return_validity_days',
+        'thermal_paper_width'
     ];
 
     $stmtUpdate = $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?");
@@ -120,9 +121,20 @@ $settings = get_settings($pdo);
 
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-md-6">
+                        <label class="form-label small fw-bold">THERMAL RECEIPT PAPER ROLL</label>
+                        <select name="thermal_paper_width" class="form-select">
+                            <option value="58mm" <?= ($settings['thermal_paper_width'] ?? '58mm') === '58mm' ? 'selected' : '' ?>>58mm (2-Inch / Standard Mini POS) [Recommended]</option>
+                            <option value="80mm" <?= ($settings['thermal_paper_width'] ?? '') === '80mm' ? 'selected' : '' ?>>80mm (3-Inch / Wide Thermal POS)</option>
+                        </select>
+                        <div class="text-muted small mt-1">Controls receipt width to avoid right-side text clipping.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
                         <label class="form-label small fw-bold">DEFAULT LOW STOCK ALERT LEVEL</label>
                         <input type="number" name="low_stock_threshold" class="form-control" value="<?= htmlspecialchars($settings['low_stock_threshold'] ?? '5') ?>">
                     </div>
+                </div>
+
+                <div class="row g-3 mb-3">
                     <div class="col-12 col-md-6">
                         <label class="form-label small fw-bold">RETURN & EXCHANGE VALIDITY (DAYS)</label>
                         <input type="number" name="return_validity_days" class="form-control" value="<?= htmlspecialchars($settings['return_validity_days'] ?? '7') ?>">
